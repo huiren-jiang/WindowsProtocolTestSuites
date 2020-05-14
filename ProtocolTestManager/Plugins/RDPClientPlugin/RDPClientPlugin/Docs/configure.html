@@ -3,11 +3,12 @@
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
     <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
     <title>Workgroup Environment Network Setup</title>
     <style>
         table, th, td
         {
-            border:1px solid black;
+            border:0.0625rem solid black;
             border-collapse:collapse;
             font-size:small;
         }
@@ -15,7 +16,7 @@
         {
             font-family:Arial;
             font-size:larger;
-            margin-bottom:10px;
+            margin-bottom:0.625rem;
         }
         div.Context
         {
@@ -28,11 +29,11 @@
             font-family:'Segoe UI';
             font-size:larger;
             font-weight:bold;
-            margin-top:80px;
+            margin-top:5rem;
         }
         .List
         {
-            margin-top: 4px;
+            margin-top: 0.25rem;
         }
         .img
         {
@@ -46,7 +47,6 @@
         }
     </style>
     <script type="text/javascript">
-        <!--
         function toggle_visibility(targetID) {
             var target = document.getElementById(targetID);
             if (target.style.display == 'block') {
@@ -56,7 +56,6 @@
                 target.style.display = 'block';
             }
         }
-        //-->
     </script>
 </head>
 <body>
@@ -76,7 +75,7 @@
     Set Up the Driver Computer
 </h2>
 <p>
-    Important: Microsoft Visual Studio 2017 (or later) and Protocol Test Framework (build 1.0.6000.0) must be installed on the driver computer before you run the
+    Important: Microsoft Visual Studio 2017 (or later), Spec Explorer (build 3.5.3146.0) and Protocol Test Framework (build 1.0.6000.0) must be installed on the driver computer before you run the
     test suite installer.
 </p>
 <p>
@@ -722,7 +721,7 @@ based on Windows, see Configuring Computers that are Not Based on Windows.
     Note: 
 </p>
 <p>
-    After run Config-DriverComputer.ps1, three files are generated under C:\, as follows:
+    After run Config-DriverComputer.ps1, two files are generated under C:\, as follows:
 </p>
 <ul>
     <li>
@@ -732,10 +731,6 @@ based on Windows, see Configuring Computers that are Not Based on Windows.
     <li>
         <strong><em>ComputerName</em></strong>
         .pfx
-    </li>
-    <li>
-        <strong><em>ComputerName</em></strong>
-        .pvk
     </li>
 </ul>
 <p>
@@ -1559,33 +1554,6 @@ Indicates if the remote desktop client (SUT) supports Server Redirection. The po
                 </p>
                 <p>
                     Default value: <strong>40</strong>
-                </p>
-            </td>
-        </tr>
-        <tr>
-            <td width="184" valign="top">
-                <p>
-                    <strong>ASNIssueFixed</strong>
-                </p>
-            </td>
-            <td width="406" valign="top">
-                <p>
-Indicates whether the workaround for the Asn1ObjectIdentifier encode issue is needed. The possible values are <strong>True</strong> and                    <strong>False</strong>.
-                </p>
-                <p>
-                    Default value: <strong>True</strong>
-                </p>
-            </td>
-        </tr>
-        <tr>
-            <td width="184" valign="top">
-                <p>
-                    <strong>isTDIXXXXFixed</strong>
-                </p>
-            </td>
-            <td width="406" valign="top">
-                <p>
-                    Ignore -- reserved for use by the test suite development team
                 </p>
             </td>
         </tr>

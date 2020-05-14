@@ -2,9 +2,11 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
-using Microsoft.Protocols.TestTools.StackSdk.Security.Sspi;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiService;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Management;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -30,6 +32,10 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
         public EncryptionAlgorithm SelectedCipherID { get; set; }
 
         public bool IsRequireMessageSigning { get; set; }
+
+        public CompressionAlgorithm[] SupportedCompressionAlgorithms { get; set; }
+
+        public bool IsChainedCompressionSupported { get; set; }
     }
 
     /// <summary>
@@ -110,35 +116,54 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
             logWriter.AddLineToLog(LogLevel.Information);
         }
 
-        public NetworkInfo PingTargetSUT()
+        public NetworkInfo DetectSUTConnection()
         {
             NetworkInfo networkInfo = new NetworkInfo();
-            IPAddress[] addList = Dns.GetHostAddresses(sutName);
-
-            if (null == addList)
+            IPAddress address;
+            //Detect SUT IP address by SUT name
+            //If SUT name is an ip address, skip to resolve, use the ip address directly
+            try
             {
-                logWriter.AddLog(LogLevel.Error, string.Format("The SUT name {0} is incorrect.", SUTName));
-            }
 
-            networkInfo.SUTIpList = new List<IPAddress>();
-            logWriter.AddLog(LogLevel.Information, "IP addresses returned from Dns.GetHostAddresses:");
-            foreach (var item in addList)
-            {
-                logWriter.AddLog(LogLevel.Information, item.ToString());
-                if (item.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                if (IPAddress.TryParse(sutName, out address))
                 {
-                    networkInfo.SUTIpList.Add(item);
+                    networkInfo.SUTIpList = new List<IPAddress>();
+                    networkInfo.SUTIpList.Add(address);
                 }
-            }
+                else //DNS resolve the SUT IP address by SUT name
+                {
+                    IPAddress[] addList = Dns.GetHostAddresses(sutName);
 
-            if (networkInfo.SUTIpList.Count == 0)
+                    if (null == addList)
+                    {
+                        logWriter.AddLog(LogLevel.Error, string.Format("The SUT name {0} is incorrect.", SUTName));
+                    }
+
+                    networkInfo.SUTIpList = new List<IPAddress>();
+                    logWriter.AddLog(LogLevel.Information, "IP addresses returned from Dns.GetHostAddresses:");
+                    foreach (var item in addList)
+                    {
+                        logWriter.AddLog(LogLevel.Information, item.ToString());
+                        if (item.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        {
+                            networkInfo.SUTIpList.Add(item);
+                        }
+                    }
+
+                    if (networkInfo.SUTIpList.Count == 0)
+                    {
+                        logWriter.AddLog(LogLevel.Error, string.Format("No available IP address resolved for target SUT {0}.", SUTName));
+                    }
+                }
+                DetermineSUTIPAddress(networkInfo.SUTIpList.ToArray());
+
+                return networkInfo;
+            }
+            catch
             {
-                logWriter.AddLog(LogLevel.Error, string.Format("No available IP address on target SUT {0}.", SUTName));
+                logWriter.AddLog(LogLevel.Error, string.Format("Detect Target SUT connection failed with SUT name: {0}.", SUTName));
+                return null;
             }
-
-            DetermineSUTIPAddress(networkInfo.SUTIpList.ToArray());
-
-            return networkInfo;
         }
 
         private void DetermineSUTIPAddress(IPAddress[] ips)
@@ -243,7 +268,7 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
             ushort creditCharge,
             ushort creditRequest,
             Packet_Header_Flags_Values flags,
-            ulong messageId,
+            ref ulong messageId,
             DialectRevision[] dialects,
             SecurityMode_Values securityMode,
             Capabilities_Values capabilities,
@@ -299,6 +324,9 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                 0,
                 preauthHashAlgs,
                 encryptionAlgs);
+
+            // SMB2 negotiate is consume the message id
+            messageId++;
 
             return status;
         }
@@ -366,7 +394,7 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                 1,
                 1,
                 Packet_Header_Flags_Values.NONE,
-                messageId++,
+                ref messageId,
                 info.requestDialect,
                 SecurityMode_Values.NEGOTIATE_SIGNING_ENABLED,
                 Capabilities_Values.GLOBAL_CAP_DFS | Capabilities_Values.GLOBAL_CAP_DIRECTORY_LEASING | Capabilities_Values.GLOBAL_CAP_LARGE_MTU
@@ -386,7 +414,6 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
             #endregion
 
             #region Session Setup
-
             SESSION_SETUP_Response sessionSetupResp;
 
             SspiClientSecurityContext sspiClientGss =
@@ -484,13 +511,14 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                 byte[] gssToken;
                 Packet_Header responseHeader;
                 NEGOTIATE_Response responsePayload;
+                ulong messageId = 1;
                 logWriter.AddLog(LogLevel.Information, "Client sends multi-protocol Negotiate to server");
                 MultiProtocolNegotiate(
                     smb2Client,
                     0,
                     1,
                     Packet_Header_Flags_Values.NONE,
-                    1,
+                    ref messageId,
                     info.requestDialect,
                     SecurityMode_Values.NEGOTIATE_SIGNING_ENABLED,
                     Capabilities_Values.GLOBAL_CAP_DFS | Capabilities_Values.GLOBAL_CAP_DIRECTORY_LEASING | Capabilities_Values.GLOBAL_CAP_ENCRYPTION | Capabilities_Values.GLOBAL_CAP_LARGE_MTU | Capabilities_Values.GLOBAL_CAP_LEASING | Capabilities_Values.GLOBAL_CAP_MULTI_CHANNEL | Capabilities_Values.GLOBAL_CAP_PERSISTENT_HANDLES,
@@ -510,7 +538,115 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                 smb2Info.SupportedCapabilities = (Capabilities_Values)responsePayload.Capabilities;
                 smb2Info.SelectedCipherID = smb2Client.SelectedCipherID;
                 smb2Info.IsRequireMessageSigning = responsePayload.SecurityMode.HasFlag(NEGOTIATE_Response_SecurityMode_Values.NEGOTIATE_SIGNING_REQUIRED);
-                return smb2Info;
+            }
+
+            FetchSmb2CompressionInfo(smb2Info);
+
+            return smb2Info;
+        }
+
+        private void FetchSmb2CompressionInfo(Smb2Info smb2Info)
+        {
+            if (smb2Info.MaxSupportedDialectRevision < DialectRevision.Smb311)
+            {
+                logWriter.AddLog(LogLevel.Information, "SMB dialect less than 3.1.1 does not support compression.");
+                smb2Info.SupportedCompressionAlgorithms = new CompressionAlgorithm[0];
+                smb2Info.IsChainedCompressionSupported = false;
+                return;
+            }
+
+            var excludedCompressionAlogrithms = new CompressionAlgorithm[]
+            {
+                CompressionAlgorithm.NONE,
+                CompressionAlgorithm.Unsupported,
+            };
+
+            var possibleCompressionAlogrithms = Enum.GetValues(typeof(CompressionAlgorithm)).Cast<CompressionAlgorithm>().Except(excludedCompressionAlogrithms);
+
+            // Iterate all possible compression algorithm for Windows will only return only one supported compression algorithm in response.
+            var result = possibleCompressionAlogrithms.Where(compressionAlgorithm =>
+            {
+                using (var client = new Smb2Client(new TimeSpan(0, 0, defaultTimeoutInSeconds)))
+                {
+                    client.ConnectOverTCP(SUTIpAddress);
+
+                    DialectRevision selectedDialect;
+                    byte[] gssToken;
+                    Packet_Header responseHeader;
+                    NEGOTIATE_Response responsePayload;
+
+                    uint status = client.Negotiate(
+                        0,
+                        1,
+                        Packet_Header_Flags_Values.NONE,
+                        0,
+                        new DialectRevision[] { DialectRevision.Smb311 },
+                        SecurityMode_Values.NEGOTIATE_SIGNING_ENABLED,
+                        Capabilities_Values.NONE,
+                        Guid.NewGuid(),
+                        out selectedDialect,
+                        out gssToken,
+                        out responseHeader,
+                        out responsePayload,
+                        preauthHashAlgs: new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 },
+                        compressionAlgorithms: new CompressionAlgorithm[] { compressionAlgorithm }
+                        );
+
+                    if (status == Smb2Status.STATUS_SUCCESS && client.CompressionInfo.CompressionIds.Length == 1 && client.CompressionInfo.CompressionIds[0] == compressionAlgorithm)
+                    {
+                        logWriter.AddLog(LogLevel.Information, $"Compression algorithm: {compressionAlgorithm} is supported by SUT.");
+                        return true;
+                    }
+                    else
+                    {
+                        logWriter.AddLog(LogLevel.Information, $"Compression algorithm: {compressionAlgorithm} is not supported by SUT.");
+                        return false;
+                    }
+                }
+            });
+
+            smb2Info.SupportedCompressionAlgorithms = result.ToArray();
+
+            // Check for chained compression support
+            using (var client = new Smb2Client(new TimeSpan(0, 0, defaultTimeoutInSeconds)))
+            {
+                client.ConnectOverTCP(SUTIpAddress);
+
+                DialectRevision selectedDialect;
+                byte[] gssToken;
+                Packet_Header responseHeader;
+                NEGOTIATE_Response responsePayload;
+
+                uint status = client.Negotiate(
+                    0,
+                    1,
+                    Packet_Header_Flags_Values.NONE,
+                    0,
+                    new DialectRevision[] { DialectRevision.Smb311 },
+                    SecurityMode_Values.NEGOTIATE_SIGNING_ENABLED,
+                    Capabilities_Values.NONE,
+                    Guid.NewGuid(),
+                    out selectedDialect,
+                    out gssToken,
+                    out responseHeader,
+                    out responsePayload,
+                    preauthHashAlgs: new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 },
+                    compressionAlgorithms: possibleCompressionAlogrithms.ToArray(),
+                    compressionFlags: SMB2_COMPRESSION_CAPABILITIES_Flags.SMB2_COMPRESSION_CAPABILITIES_FLAG_CHAINED
+                    );
+
+                if (status == Smb2Status.STATUS_SUCCESS && client.CompressionInfo.SupportChainedCompression)
+                {
+                    logWriter.AddLog(LogLevel.Information, "Chained compression is supported by SUT.");
+
+                    smb2Info.IsChainedCompressionSupported = true;
+                }
+                else
+                {
+                    logWriter.AddLog(LogLevel.Information, "Chained compression is not supported by SUT.");
+
+                    smb2Info.IsChainedCompressionSupported = false;
+                }
             }
         }
 
@@ -527,10 +663,11 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                 logWriter.AddLog(LogLevel.Information, string.Format("EnumShares failed, reason: {0}", ex.Message));
             }
 
+
             if (shareList == null)
             {
                 // EnumShares may fail because the SUT doesn't support SRVS.
-                // Try to connect the default share "SMBBasic"
+                // Try to connect the share which is input by the user in the "Target Share" field of Auto-Detection page.
                 using (Smb2Client client = new Smb2Client(new TimeSpan(0, 0, defaultTimeoutInSeconds)))
                 {
                     ulong messageId;
@@ -538,8 +675,9 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                     uint treeId;
                     try
                     {
-                        ConnectToShare(defautBasicShare, info, client, out messageId, out sessionId, out treeId);
-                        shareList = new string[] { defautBasicShare };
+                        logWriter.AddLog(LogLevel.Information, string.Format("Try to connect share {0}.", info.BasicShareName));
+                        ConnectToShare(info.BasicShareName, info, client, out messageId, out sessionId, out treeId);
+                        shareList = new string[] { info.BasicShareName };
                     }
                     catch
                     {
@@ -716,22 +854,21 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                     return Platform.WindowsServer2016;
                 }
 
-                if (build < 16299)
+                var minimumVersionToPlatformDict = new Dictionary<int, Platform>
                 {
-                    return Platform.WindowsServer2016;
-                }
-                else if (build < 17134)
-                {
-                    return Platform.WindowsServerV1709;
-                }
-                else if (build < 17763)
-                {
-                    return Platform.WindowsServerV1803;
-                }
-                else
-                {
-                    return Platform.WindowsServer2019;
-                }
+                    [Int32.MinValue] = Platform.WindowsServer2016,
+                    [16299] = Platform.WindowsServerV1709,
+                    [17134] = Platform.WindowsServerV1803,
+                    [17763] = Platform.WindowsServer2019,
+                    [18362] = Platform.WindowsServerV1903,
+                    [18363] = Platform.WindowsServerV1909,
+                    [19041] = Platform.WindowsServerV2004,
+                };
+
+                // Find the maximum version which is not greater than build.
+                var kvpMatched = minimumVersionToPlatformDict.OrderBy((kvp) => kvp.Key).Last((kvp) => kvp.Key <= build);
+
+                return kvpMatched.Value;
             }
             else if (osVersion.StartsWith("6.3."))
                 return Platform.WindowsServer2012R2;

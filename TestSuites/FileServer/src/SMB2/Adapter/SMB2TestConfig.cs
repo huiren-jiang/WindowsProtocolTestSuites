@@ -7,7 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Security;
 using Microsoft.Protocols.TestTools;
-using Microsoft.Protocols.TestTools.StackSdk.Security.Sspi;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
 using Microsoft.Protocols.TestTools.StackSdk.Networking.Rpce;
 using Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
@@ -60,6 +60,30 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.Adapter
             get
             {
                 return uint.Parse(GetProperty("NumberOfPreviousVersions"));
+            }
+        }
+
+        public string DriverComputerName
+        {
+            get
+            {
+                return GetProperty("DriverComputerName");
+            }
+        }
+
+        public string ClusteredInfrastructureFileServerName
+        {
+            get
+            {
+                return GetProperty("ClusteredInfrastructureFileServerName");
+            }
+        }
+
+        public string InfrastructureRootShare
+        {
+            get
+            {
+                return GetProperty("InfrastructureRootShare");
             }
         }
 

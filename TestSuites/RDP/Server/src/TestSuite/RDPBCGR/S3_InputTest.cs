@@ -15,6 +15,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
     {
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify SUT can process slow-path input message correctly.")]
@@ -35,15 +36,15 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             #region Test Code
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             string[] SVCNames = new string[] { RdpConstValue.SVCNAME_RDPEDYC };
-            rdpbcgrAdapter.EstablishRDPConnection(requestProtocol, SVCNames, CompressionType.PACKET_COMPR_TYPE_RDP61,
+            rdpbcgrAdapter.EstablishRDPConnection(testConfig.requestProtocol, SVCNames, CompressionType.PACKET_COMPR_TYPE_RDP61,
                 false, // Is reconnect
                 true   // Is auto logon
                 );
-            
+
             this.Site.Log.Add(LogEntryKind.Comment, "Send several Client Input Event PDUs.");
             rdpbcgrAdapter.GenerateSlowPathInputs();
 
@@ -54,6 +55,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify SUT can process fast-path input message correctly.")]
@@ -73,11 +75,11 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             #region Test Code
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             string[] SVCNames = new string[] { RdpConstValue.SVCNAME_RDPEDYC };
-            rdpbcgrAdapter.EstablishRDPConnection(requestProtocol, SVCNames, CompressionType.PACKET_COMPR_TYPE_RDP61,
+            rdpbcgrAdapter.EstablishRDPConnection(testConfig.requestProtocol, SVCNames, CompressionType.PACKET_COMPR_TYPE_RDP61,
                 false, // Is reconnect
                 true,  // Is auto logon
                 supportFastPathInput:true);

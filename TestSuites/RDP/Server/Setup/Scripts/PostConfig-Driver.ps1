@@ -1,7 +1,5 @@
-#############################################################
-## Copyright (c) Microsoft Corporation. All rights reserved.
-## Licensed under the MIT license. See LICENSE file in the project root for full license information.
-#############################################################
+# Copyright (c) Microsoft. All rights reserved.
+# Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 #############################################################################
 ##
@@ -14,27 +12,51 @@
 
 Param
 (
-	[string]$WorkingPath = "C:\temp"
+    [string] $domain,
+    [string] $userName,
+    [string] $userPwd
 )
 
-$param                   = @{}
+$isAutomation            = $false
+$WorkingPath      	     = "C:\Temp"
 $ScriptFileFullPath      = $MyInvocation.MyCommand.Definition
 $ScriptName              = [System.IO.Path]::GetFileName($ScriptFileFullPath)
 $LogFileFullPath         = "$ScriptFileFullPath.log"
 $SignalFileFullPath      = "$WorkingPath\post.finished.signal"
+$driverName              = $env:computername
+$driverIp                = (Test-Connection $driverName -count 1 | select -ExpandProperty Ipv4Address).IPAddressToString
+
 [string]$configPath	 	 = "$WorkingPath\protocol.xml"
 
-[xml]$Content = Get-Content $configPath
-$driverComputerSetting = $Content.lab.servers.vm | where {$_.role -eq "DriverComputer"}
-$coreSetting = $Content.lab.core
+# Switch to the working path
+if (Test-Path "$WorkingPath") {
+    # Switch to the working path
+    Write-Host "Switching to $WorkingPath..." -ForegroundColor Yellow
+    Push-Location $WorkingPath
+}
+
+if (Test-Path "$configPath") {
+    [xml]$Content = Get-Content $configPath
+    $driverComputerSetting = $Content.lab.servers.vm | where { $_.role -eq "DriverComputer" }
+    $coreSetting = $Content.lab.core
+
+    if(![string]::IsNullOrEmpty($coreSetting.regressiontype) -and ($coreSetting.regressiontype -eq "Azure")){
+        $SignalFileFullPath = "$env:SystemDrive\PostScript.Completed.signal"
+    }
+
+    $domain = $driverComputerSetting.domain
+    $userName = $coreSetting.username
+    $userPwd = $coreSetting.password
+    $driverIp = $driverComputerSetting.ip
+    $isAutomation = $true
+}
 
 #------------------------------------------------------------------------------------------
 # Function: Start-ConfigLog
 # Create log file and start logging
 #------------------------------------------------------------------------------------------
-Function Start-ConfigLog()
-{
-    if(!(Test-Path -Path $LogFileFullPath)){
+Function Start-ConfigLog() {
+    if (!(Test-Path -Path $LogFileFullPath)) {
         New-Item -ItemType File -path $LogFileFullPath -Force
     }
     Start-Transcript $LogFileFullPath -Append 2>&1 | Out-Null
@@ -44,10 +66,9 @@ Function Start-ConfigLog()
 # Function: Write-ConfigLog
 # Write information to log file
 #------------------------------------------------------------------------------------------
-Function Write-ConfigLog
-{
+Function Write-ConfigLog {
     Param (
-        [Parameter(ValueFromPipeline=$true)] $text,
+        [Parameter(ValueFromPipeline = $true)] $text,
         $ForegroundColor = "Green"
     )
 
@@ -55,11 +76,13 @@ Function Write-ConfigLog
     Write-Output "[$date] $text"
 }
 
-Function Complete-Configure
-{
-    # Write signal file
-    Write-ConfigLog "Write signal file`: post.finished.signal to hard drive."
-    cmd /C ECHO CONFIG FINISHED > $SignalFileFullPath
+Function Complete-Configure {
+    if($isAutomation)
+    {
+        # Write signal file
+        Write-ConfigLog "Write signal file`: $SignalFileFullPath to hard drive."
+        cmd /C ECHO CONFIG FINISHED > $SignalFileFullPath
+    }    
 
     # Ending script
     Write-ConfigLog "Config finished."
@@ -73,49 +96,44 @@ Function Complete-Configure
 # Function: Init-Environment
 # Start logging, check signal file, switch to script path and read the config parameters
 #------------------------------------------------------------------------------------------
-Function Init-Environment()
-{
+Function Init-Environment() {
     # Start logging
     Start-ConfigLog
 
     # Start executing the script
     Write-ConfigLog "Executing [$ScriptName]..." -ForegroundColor Cyan
-
-    # Switch to the working path
-    Write-ConfigLog "Switching to $WorkingPath..." -ForegroundColor Yellow
-    Push-Location $WorkingPath
 }
 
 #------------------------------------------------------------------------------------------
 # Function: Config-Environment
 # Control the overall workflow of all configuration phases
 #------------------------------------------------------------------------------------------
-Function Config-Environment
-{
+Function Config-Environment {
     # Start configure
-	[string] $domain = $driverComputerSetting.domain
-	[string] $userName = $coreSetting.username
-	[string] $userPwd = $coreSetting.password
-	
     Write-ConfigLog "Setting autologon..." -ForegroundColor Yellow
-    Set-AutoLogon -Domain $domain -Username $userName -Password $userPwd -Count 999
+    .\Set-AutoLogon -Domain $domain -Username $userName -Password $userPwd -Count 999
 
     # Turn off UAC
     Write-ConfigLog "Turn off UAC..." -ForegroundColor Yellow
     Set-ItemProperty -path  HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System -name "EnableLUA" -value "0"
 
-    Write-Host "Enable remoting"
-    Enable-Remoting
+    # Write-Host "Enable WinRM"
+    Write-Host "Enable WinRM"
+    if (Test-WSMan -ComputerName $driverIp) {
+        Write-Host "WinRM is running"
+    }
+    else {
+        .\Enable-WinRM.ps1
+    }
 }
 
 
 #------------------------------------------------------------------------------------------
 # Main Function
 #------------------------------------------------------------------------------------------
-Function Main
-{
+Function Main {
     # Initialize configure environment
-    Init-Environment    
+    Init-Environment
 
     # Start configure
     Config-Environment
@@ -125,3 +143,5 @@ Function Main
 }
 
 Main
+
+Pop-Location

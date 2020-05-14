@@ -1,16 +1,17 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Diagnostics.CodeAnalysis;
-using System.IO;
-using System.Runtime.InteropServices;
+using Microsoft.Protocols.TestTools.StackSdk.Asn1;
 using Microsoft.Protocols.TestTools.StackSdk.Messages.Marshaling;
 using Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr.Gcc;
 using Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr.Mcs;
-using Microsoft.Protocols.TestTools.StackSdk.Asn1;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 {
@@ -1476,7 +1477,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
                 RdpbcgrEncoder.EncodeStructure(coreData, gccPdu.clientCoreData.deviceScaleFactor.actualData);
 
-                labelCoreEnd:
+            labelCoreEnd:
                 userData.AddRange(coreData.ToArray());
             }
             #endregion Encode clientCoreData structure TS_UD_CS_CORE
@@ -2884,7 +2885,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                                                         infoPacket.extraInfo.cbClientDir);
                     }
 
-                    RdpbcgrEncoder.EncodeStructure(infoBuffer, (ushort)infoPacket.extraInfo.clientTimeZone.Bias);
+                    RdpbcgrEncoder.EncodeStructure(infoBuffer, infoPacket.extraInfo.clientTimeZone.Bias);
                     RdpbcgrEncoder.EncodeUnicodeString(infoBuffer,
                                                        infoPacket.extraInfo.clientTimeZone.StandardName,
                                                        ConstValue.TIME_ZONE_STANDARD_NAME_SIZE);
@@ -3412,9 +3413,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         None = 0,
 
         /// <summary>
-        ///  Possible value.
+        ///  AF_INET 0x00002: The clientAddress field contains an IPv4 address.
         /// </summary>
         V1 = 0x0002,
+
+        /// <summary>
+        ///  AF_INET6 0x0017: The clientAddress field contains an IPv6 address.
+        /// </summary>
+        V2 = 0x0017,
     }
 
     /// <summary>
@@ -3967,9 +3973,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         PREAMBLE_VERSION_2_0 = 0x02,
 
         /// <summary>
-        ///  RDP 5.0, 5.1, and 5.2.
+        /// RDP 5.0, 5.1, 5.2, 6.0, 6.1, 7.0, 7.1, 8.0, 8.1, 10.0, 10.1, 10.2, 10.3, 10.4, and 10.5
         /// </summary>
         PREAMBLE_VERSION_3_0 = 0x03,
+
+        /// <summary>
+        /// Indicates that extended error information using the Licensing Error Message (section 2.2.1.12.1.3) is supported.
+        /// </summary>
+        EXTENDED_ERROR_MSG_SUPPORTED = 0x80
     }
 
     /// <summary>
@@ -4005,7 +4016,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ///  set to 0, then this field is not included in the Licensing
         ///  Binary BLOB structure.
         /// </summary>
-        //[StaticSize(1, StaticSizeMode.Elements)]
+        [Size("wBlobLen")]
         public byte[] blobData;
     }
 
@@ -4931,7 +4942,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ///  A 16-bit unsigned integer. The message type. This field
         ///  MUST be set to SYNCMSGTYPE_SYNC (1).
         /// </summary>
-        public messageType_Values messageType;
+        public TS_SYNCHRONIZE_PDU_messageType_Values messageType;
 
         /// <summary>
         ///  A 16-bit unsigned integer. The MCS channel ID of the
@@ -4941,19 +4952,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     }
 
     /// <summary>
-    /// The type of messageType.
+    /// The type of messageType field in TS_SYNCHRONIZE_PDU.
     /// </summary>
-    public enum messageType_Values : ushort
+    public enum TS_SYNCHRONIZE_PDU_messageType_Values : ushort
     {
         /// <summary>
-        /// None.
+        /// SYNCMSGTYPE_SYNC.
         /// </summary>
-        None = 0,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        V1 = 1,
+        SYNCMSGTYPE_SYNC = 1,
     }
 
     /// <summary>
@@ -5689,6 +5695,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// </summary>
         public SlowPathPduCommonHeader commonHeader;
 
+        public LICENSE_PREAMBLE preamble;
+
         /// <summary>
         ///  The RDPELE message includes preamble and LicensingMessage.
         ///  This field will not be encoded/decoded in RDPBCGR.
@@ -6313,7 +6321,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ///  A 16-bit unsigned integer. Indicates the packet size.
         ///  This field MUST be set to 0x0008 (8 bytes)
         /// </summary>
-        public RDP_NEG_RSP_length_Values length;
+        public UInt16 length;
 
         /// <summary>
         ///  A 32-bit unsigned integer. Field indicating the selected
@@ -6323,19 +6331,19 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     }
 
     /// <summary>
-    /// The type of type.
+    /// The type of type field in RDP_NEG_RSP.
     /// </summary>
     public enum RDP_NEG_RSP_type_Values : byte
     {
         /// <summary>
-        /// None.
+        /// An invalid value for negative test.
         /// </summary>
-        None = 0,
+        Invalid = 0,
 
         /// <summary>
-        ///  Possible value.
+        /// TYPE_RDP_NEG_RSP.
         /// </summary>
-        V1 = 0x02,
+        TYPE_RDP_NEG_RSP = 0x02,
     }
 
     /// <summary>
@@ -6380,19 +6388,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     }
 
     /// <summary>
-    /// The type of length.
+    /// The values of length field in RDP_NEG_RSP.
     /// </summary>
     public enum RDP_NEG_RSP_length_Values : ushort
     {
         /// <summary>
-        /// None.
+        /// The valid value.
         /// </summary>
-        None = 0,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        V1 = 0x0008,
+        Valid = 0x0008,
     }
 
     /// <summary>
@@ -6425,7 +6428,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ///  A 16-bit unsigned integer. Indicates the packet size.
         ///  This field MUST be set to 0x0008 (8 bytes).
         /// </summary>
-        public RDP_NEG_FAILURE_length_Values length;
+        public UInt16 length;
 
         /// <summary>
         ///  A 32-bit unsigned integer. Field containing the failure
@@ -6435,48 +6438,38 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     }
 
     /// <summary>
-    /// The type of type.
+    /// The type of type field in RDP_NEG_FAILURE.
     /// </summary>
     public enum RDP_NEG_FAILURE_type_Values : byte
     {
         /// <summary>
-        /// None.
+        /// TYPE_RDP_NEG_FAILURE.
         /// </summary>
-        None = 0,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        V1 = 0x03,
+        TYPE_RDP_NEG_FAILURE = 0x03,
     }
 
     /// <summary>
-    /// The type of flags.
+    /// The type of flags field in RDP_NEG_FAILURE.
     /// </summary>
     [SuppressMessage("Microsoft.Design", "CA1008:EnumsShouldHaveZeroValue")]
     public enum RDP_NEG_FAILURE_flags_Values : byte
     {
 
         /// <summary>
-        ///  Possible value.
+        /// Unused.
         /// </summary>
-        V1 = 0x00,
+        Unused = 0x00,
     }
 
     /// <summary>
-    /// The type of length.
+    /// The values of length field in RDP_NEG_FAILURE.
     /// </summary>
     public enum RDP_NEG_FAILURE_length_Values : ushort
     {
         /// <summary>
-        /// None.
+        /// The valid value.
         /// </summary>
-        None = 0,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        V1 = 0x0008,
+        Valid = 0x0008,
     }
 
     /// <summary>
@@ -6687,7 +6680,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ///  number is stored in the high 2 bytes, while the minor
         ///  version number is stored in the low 2 bytes.
         /// </summary>
-        public version_Values version;
+        public TS_UD_CS_CORE_version_Values version;
 
         /// <summary>
         ///  A 16-bit unsigned integer. The requested desktop width
@@ -6905,13 +6898,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     /// <summary>
     /// The type of version.
     /// </summary>
-    public enum version_Values : uint
+    public enum TS_UD_CS_CORE_version_Values : uint
     {
-        /// <summary>
-        /// None.
-        /// </summary>
-        None = 0,
-
         /// <summary>
         ///  RDP 4.0 clients
         /// </summary>
@@ -6955,7 +6943,17 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <summary>
         ///  RDP 10.6 clients
         /// </summary>
-        V9 = 0x0008000B
+        V9 = 0x0008000B,
+
+        /// <summary>
+        /// RDP 10.7 clients
+        /// </summary>
+        V10 = 0x0008000C,
+
+        /// <summary>
+        /// RDP 10.8 clients
+        /// </summary>
+        V11 = 0x0008000D
     }
 
     /// <summary>
@@ -7842,11 +7840,6 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     public enum TS_UD_SC_CORE_version_Values : uint
     {
         /// <summary>
-        /// None.
-        /// </summary>
-        None = 0,
-
-        /// <summary>
         ///  RDP 4.0 servers.
         /// </summary>
         V1 = 0x00080001,
@@ -7889,7 +7882,17 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <summary>
         /// RDP 10.6 servers
         /// </summary>
-        V9 = 0x0008000B
+        V9 = 0x0008000B,
+
+        /// <summary>
+        /// RDP 10.7 servers
+        /// </summary>
+        V10 = 0x0008000C,
+
+        /// <summary>
+        /// RDP 10.8 servers
+        /// </summary>
+        V11 = 0x0008000D
     }
 
     /// <summary>
@@ -9057,7 +9060,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ///  Server Auto-Reconnect packet. This field MUST be set
         ///  to 0x0000001C (28 bytes).
         /// </summary>
-        public cbLen_Values cbLen;
+        public UInt32 cbLen;
 
         /// <summary>
         ///  A 32-bit unsigned integer. The value representing the
@@ -9080,19 +9083,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     }
 
     /// <summary>
-    /// The type of cbLen.
+    /// The values of cbLen field in ARC_SC_PRIVATE_PACKET.
     /// </summary>
-    public enum cbLen_Values : uint
+    public enum ARC_SC_PRIVATE_PACKET_cbLen_Values : uint
     {
         /// <summary>
-        /// None.
+        /// The valid value.
         /// </summary>
-        None = 0,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        V1 = 0x0000001C,
+        Valid = 0x0000001C,
     }
 
     /// <summary>
@@ -9427,63 +9425,62 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     /// <summary>
     /// The type of errorInfo.
     /// </summary>
-    [SuppressMessage("Microsoft.Design", "CA1008:EnumsShouldHaveZeroValue")]
     public enum errorInfo_Values : uint
     {
         /// <summary>
-        ///  Possible value.
+        /// No error has occurred. This code SHOULD be ignored.
         /// </summary>
-        ERRINFO_NOERROR = 0x00000000,
+        ERRINFO_NONE = 0x00000000,
 
         /// <summary>
-        ///  Possible value.
+        /// The disconnection was initiated by an administrative tool on the server in another session.
         /// </summary>
         ERRINFO_RPC_INITIATED_DISCONNECT = 0x00000001,
 
         /// <summary>
-        ///  Possible value.
+        /// The disconnection was due to a forced logoff initiated by an administrative tool on the server in another session.
         /// </summary>
         ERRINFO_RPC_INITIATED_LOGOFF = 0x00000002,
 
         /// <summary>
-        ///  Possible value.
+        /// The idle session limit timer on the server has elapsed.
         /// </summary>
         ERRINFO_IDLE_TIMEOUT = 0x00000003,
 
         /// <summary>
-        ///  Possible value.
+        /// The active session limit timer on the server has elapsed.
         /// </summary>
         ERRINFO_LOGON_TIMEOUT = 0x00000004,
 
         /// <summary>
-        ///  Possible value.
+        /// Another user connected to the server, forcing the disconnection of the current connection.
         /// </summary>
         ERRINFO_DISCONNECTED_BY_OTHERCONNECTION = 0x00000005,
 
         /// <summary>
-        ///  Possible value.
+        /// The server ran out of available memory resources.
         /// </summary>
         ERRINFO_OUT_OF_MEMORY = 0x00000006,
 
         /// <summary>
-        ///  Possible value.
+        /// The server denied the connection.
         /// </summary>
         ERRINFO_SERVER_DENIED_CONNECTION = 0x00000007,
 
         /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_SERVER_DENIED_CONNECTION_FIPS = 0x00000008,
-
-        /// <summary>
-        ///  Possible value.
+        /// The user cannot connect to the server due to insufficient access privileges.
         /// </summary>
         ERRINFO_SERVER_INSUFFICIENT_PRIVILEGES = 0x00000009,
 
         /// <summary>
-        ///  Possible value.
+        /// The server does not accept saved user credentials and requires that the user enter their credentials for each connection.
         /// </summary>
         ERRINFO_SERVER_FRESH_CREDENTIALS_REQUIRED = 0x0000000A,
+
+        /// <summary>
+        /// The disconnection was initiated by an administrative tool on the server running in the user's session.
+        /// </summary>
+        ERRINFO_RPC_INITIATED_DISCONNECT_BYUSER = 0x0000000B,
 
         /// <summary>
         /// The disconnection was initiated by the user logging off his or her session on the server.
@@ -9491,565 +9488,469 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ERRINFO_LOGOFF_BY_USER = 0x0000000C,
 
         /// <summary>
-        ///  Possible value.
+        /// The display driver in the remote session did not report any status within the time allotted for startup.
+        /// </summary>
+        ERRINFO_CLOSE_STACK_ON_DRIVER_NOT_READY = 0x0000000F,
+
+        /// <summary>
+        /// The DWM process running in the remote session terminated unexpectedly.
+        /// </summary>
+        ERRINFO_SERVER_DWM_CRASH = 0x00000010,
+
+        /// <summary>
+        /// The display driver in the remote session was unable to complete all the tasks required for startup.
+        /// </summary>
+        ERRINFO_CLOSE_STACK_ON_DRIVER_FAILURE = 0x00000011,
+
+        /// <summary>
+        /// The display driver in the remote session started up successfully, but due to internal failures was not usable by the remoting stack.
+        /// </summary>
+        ERRINFO_CLOSE_STACK_ON_DRIVER_IFACE_FAILURE = 0x00000012,
+
+        /// <summary>
+        /// The Winlogon process running in the remote session terminated unexpectedly.
+        /// </summary>
+        ERRINFO_SERVER_WINLOGON_CRASH = 0x00000017,
+
+        /// <summary>
+        /// The CSRSS process running in the remote session terminated unexpectedly.
+        /// </summary>
+        ERRINFO_SERVER_CSRSS_CRASH = 0x00000018,
+
+        /// <summary>
+        /// An internal error has occurred in the Terminal Services licensing component.
         /// </summary>
         ERRINFO_LICENSE_INTERNAL = 0x00000100,
 
         /// <summary>
-        ///  Possible value.
+        /// A Remote Desktop License Server ([MS-RDPELE] section 1.1) could not be found to provide a license.
         /// </summary>
         ERRINFO_LICENSE_NO_LICENSE_SERVER = 0x00000101,
 
         /// <summary>
-        ///  Possible value.
+        /// There are no Client Access Licenses ([MS-RDPELE] section 1.1) available for the target remote computer.
         /// </summary>
         ERRINFO_LICENSE_NO_LICENSE = 0x00000102,
 
         /// <summary>
-        ///  Possible value.
+        /// The remote computer received an invalid licensing message from the client. 
         /// </summary>
         ERRINFO_LICENSE_BAD_CLIENT_MSG = 0x00000103,
 
         /// <summary>
-        ///  Possible value.
+        /// The Client Access License ([MS-RDPELE] section 1.1) stored by the client has been modified. 
         /// </summary>
         ERRINFO_LICENSE_HWID_DOESNT_MATCH_LICENSE = 0x00000104,
 
         /// <summary>
-        ///  Possible value.
+        /// The Client Access License ([MS-RDPELE] section 1.1) stored by the client is in an invalid format 
         /// </summary>
         ERRINFO_LICENSE_BAD_CLIENT_LICENSE = 0x00000105,
 
         /// <summary>
-        ///  Possible value.
+        /// Network problems have caused the licensing protocol ([MS-RDPELE] section 1.3.3) to be terminated. 
         /// </summary>
         ERRINFO_LICENSE_CANT_FINISH_PROTOCOL = 0x00000106,
 
         /// <summary>
-        ///  Possible value.
+        /// The client prematurely ended the licensing protocol ([MS-RDPELE] section 1.3.3).
         /// </summary>
         ERRINFO_LICENSE_CLIENT_ENDED_PROTOCOL = 0x00000107,
 
         /// <summary>
-        ///  Possible value.
+        /// A licensing message ([MS-RDPELE] sections 2.2 and 5.1) was incorrectly encrypted.
         /// </summary>
         ERRINFO_LICENSE_BAD_CLIENT_ENCRYPTION = 0x00000108,
 
         /// <summary>
-        ///  Possible value.
+        /// The Client Access License ([MS-RDPELE] section 1.1) stored by the client could not be upgraded or renewed.
         /// </summary>
         ERRINFO_LICENSE_CANT_UPGRADE_LICENSE = 0x00000109,
 
         /// <summary>
-        ///  Possible value.
+        /// The remote computer is not licensed to accept remote connections.
+        /// Protocol-independent codes generated by Connection Broker:
         /// </summary>
         ERRINFO_LICENSE_NO_REMOTE_CONNECTIONS = 0x0000010A,
 
         /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_SALEM_INVALIDHELPSESSION = 0x0000200,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_RDPENC_INVALID_CREDENTIALS = 0x0000300,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        TS_ERRINFO_RDPENC_INTERNALERROR = 0x0000301,
-
-        /// <summary>
         /// The target endpoint could not be found.
         /// </summary>
-        ERRINFO_CB_DESTINATION_NOT_FOUND = 0x0000400,
+        ERRINFO_CB_DESTINATION_NOT_FOUND = 0x00000400,
 
         /// <summary>
         /// The target endpoint to which the client is being redirected is disconnecting from the Connection Broker.
         /// </summary>
-        ERRINFO_CB_LOADING_DESTINATION = 0x0000402,
+        ERRINFO_CB_LOADING_DESTINATION = 0x00000402,
 
         /// <summary>
         /// An error occurred while the connection was being redirected to the target endpoint.
         /// </summary>
-        ERRINFO_CB_REDIRECTING_TO_DESTINATION = 0x0000404,
+        ERRINFO_CB_REDIRECTING_TO_DESTINATION = 0x00000404,
 
         /// <summary>
         /// An error occurred while the target endpoint (a virtual machine) was being awakened.
         /// </summary>
-        ERRINFO_CB_SESSION_ONLINE_VM_WAKE = 0x0000405,
+        ERRINFO_CB_SESSION_ONLINE_VM_WAKE = 0x00000405,
 
         /// <summary>
         /// An error occurred while the target endpoint (a virtual machine) was being started.
         /// </summary>
-        ERRINFO_CB_SESSION_ONLINE_VM_BOOT = 0x0000406,
+        ERRINFO_CB_SESSION_ONLINE_VM_BOOT = 0x00000406,
 
         /// <summary>
         /// The IP address of the target endpoint (a virtual machine) cannot be determined.
         /// </summary>
-        ERRINFO_CB_SESSION_ONLINE_VM_NO_DNS = 0x0000407,
+        ERRINFO_CB_SESSION_ONLINE_VM_NO_DNS = 0x00000407,
 
         /// <summary>
         /// There are no available endpoints in the pool managed by the Connection Broker.
         /// </summary>
-        ERRINFO_CB_DESTINATION_POOL_NOT_FREE = 0x0000408,
+        ERRINFO_CB_DESTINATION_POOL_NOT_FREE = 0x00000408,
 
         /// <summary>
-        /// Processing of the connection has been cancelled.
+        /// Processing of the connection has been canceled.
         /// </summary>
-        ERRINFO_CB_CONNECTION_CANCELLED = 0x0000409,
+        ERRINFO_CB_CONNECTION_CANCELLED = 0x00000409,
 
         /// <summary>
-        /// The settings contained in the routingToken field of 
-        /// the X.224 Connection Request PDU (section 2.2.1.1) cannot be validated.
+        /// The settings contained in the routingToken field of the X.224 Connection Request PDU (section 2.2.1.1) cannot be validated.
         /// </summary>
-        ERRINFO_CB_CONNECTION_ERROR_INVALID_SETTINGS = 0x0000410,
+        ERRINFO_CB_CONNECTION_ERROR_INVALID_SETTINGS = 0x00000410,
 
         /// <summary>
         /// A time-out occurred while the target endpoint (a virtual machine) was being started.
         /// </summary>
-        ERRINFO_CB_SESSION_ONLINE_VM_BOOT_TIMEOUT = 0x0000411,
+        ERRINFO_CB_SESSION_ONLINE_VM_BOOT_TIMEOUT = 0x00000411,
 
         /// <summary>
         /// A session monitoring error occurred while the target endpoint (a virtual machine) was being started.
         /// </summary>
-        ERRINFO_CB_SESSION_ONLINE_VM_SESSMON_FAILED = 0x0000412,
+        ERRINFO_CB_SESSION_ONLINE_VM_SESSMON_FAILED = 0x00000412,
 
         /// <summary>
-        ///  Possible value.
+        /// Unknown pduType2 field in a received Share Data Header (section 2.2.8.1.1.1.2).
         /// </summary>
         ERRINFO_UNKNOWNPDUTYPE2 = 0x000010C9,
 
         /// <summary>
-        ///  Possible value.
+        /// Unknown pduType field in a received Share Control Header (section 2.2.8.1.1.1.1).
         /// </summary>
         ERRINFO_UNKNOWNPDUTYPE = 0x000010CA,
 
         /// <summary>
-        ///  Possible value.
+        /// An out-of-sequence Slow-Path Data PDU (section 2.2.8.1.1.1.1) has been received.
         /// </summary>
         ERRINFO_DATAPDUSEQUENCE = 0x000010CB,
 
         /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_UNKNOWNFLOWPDU = 0x000010CC,
-
-        /// <summary>
-        ///  Possible value.
+        /// An out-of-sequence Slow-Path Non-Data PDU (section 2.2.8.1.1.1.1) has been received.
         /// </summary>
         ERRINFO_CONTROLPDUSEQUENCE = 0x000010CD,
 
         /// <summary>
-        ///  Possible value.
+        /// A Control PDU (sections 2.2.1.15 and 2.2.1.16) has been received with an invalid action field.
         /// </summary>
         ERRINFO_INVALIDCONTROLPDUACTION = 0x000010CE,
 
         /// <summary>
-        ///  Possible value.
+        /// One of two possible errors:       A Slow-Path Input Event (section 2.2.8.1.1.3.1.1) has been received with an invalid messageType field.       A Fast-Path Input Event (section 2.2.8.1.2.2) has been received with an invalid eventCode field
         /// </summary>
         ERRINFO_INVALIDINPUTPDUTYPE = 0x000010CF,
 
         /// <summary>
-        ///  Possible value.
+        /// One of two possible errors:
+        /// A Slow-Path Mouse Event (section 2.2.8.1.1.3.1.1.3) or Extended Mouse Event (section 2.2.8.1.1.3.1.1.4) has been received with an invalid pointerFlags field.
+        /// A Fast-Path Mouse Event (section 2.2.8.1.2.2.3) or Fast-Path Extended Mouse Event (section 2.2.8.1.2.2.4) has been received with an invalid pointerFlags field.
         /// </summary>
         ERRINFO_INVALIDINPUTPDUMOUSE = 0x000010D0,
 
         /// <summary>
-        ///  Possible value.
+        /// An invalid Refresh Rect PDU (section 2.2.11.2) has been received.
         /// </summary>
         ERRINFO_INVALIDREFRESHRECTPDU = 0x000010D1,
 
         /// <summary>
-        ///  Possible value.
+        /// The server failed to construct the GCC Conference Create Response user data (section 2.2.1.4).
         /// </summary>
         ERRINFO_CREATEUSERDATAFAILED = 0x000010D2,
 
         /// <summary>
-        ///  Possible value.
+        /// Processing during the Channel Connection phase of the RDP Connection Sequence (see section 1.3.1.1 for an overview of the RDP Connection Sequence phases) has failed.
         /// </summary>
         ERRINFO_CONNECTFAILED = 0x000010D3,
 
         /// <summary>
-        ///  Possible value.
+        /// A Confirm Active PDU (section 2.2.1.13.2) was received from the client with an invalid shareId field.
         /// </summary>
         ERRINFO_CONFIRMACTIVEWRONGSHAREID = 0x000010D4,
 
         /// <summary>
-        ///  Possible value.
+        /// A Confirm Active PDU (section 2.2.1.13.2) was received from the client with an invalid originatorId field.
         /// </summary>
         ERRINFO_CONFIRMACTIVEWRONGORIGINATOR = 0x000010D5,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to process a Persistent Key List PDU (section 2.2.1.17).
         /// </summary>
         ERRINFO_PERSISTENTKEYPDUBADLENGTH = 0x000010DA,
 
         /// <summary>
-        ///  Possible value.
+        /// A Persistent Key List PDU (section 2.2.1.17) marked as PERSIST_PDU_FIRST (0x01) was received after the reception of a prior Persistent Key List PDU also marked as PERSIST_PDU_FIRST. 
         /// </summary>
         ERRINFO_PERSISTENTKEYPDUILLEGALFIRST = 0x000010DB,
 
         /// <summary>
-        ///  Possible value.
+        /// A Persistent Key List PDU (section 2.2.1.17) was received which specified a total number of bitmap cache entries larger than 262144. 
         /// </summary>
         ERRINFO_PERSISTENTKEYPDUTOOMANYTOTALKEYS = 0x000010DC,
 
         /// <summary>
-        ///  Possible value.
+        /// A Persistent Key List PDU (section 2.2.1.17) was received which specified an invalid total number of keys for a bitmap cache (the number of entries that can be stored within each bitmap cache is specified in the Revision 1 or 2 Bitmap Cac
         /// </summary>
         ERRINFO_PERSISTENTKEYPDUTOOMANYCACHEKEYS = 0x000010DD,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to process Input Event PDU Data (section 2.2.8.1.1.3.1) or a Fast-Path Input Event PDU (section 2.2.8.1.2).
         /// </summary>
         ERRINFO_INPUTPDUBADLENGTH = 0x000010DE,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to process the shareDataHeader, NumInfoBlocks, Pad1, and Pad2 fields of the Bitmap Cache Error PDU Data ([MS-RDPEGDI] section 2.2.2.3.1.1).
         /// </summary>
         ERRINFO_BITMAPCACHEERRORPDUBADLENGTH = 0x000010DF,
 
         /// <summary>
-        ///  Possible value.
+        /// One of two possible errors:
+        /// The dataSignature field of the Fast-Path Input Event PDU (section 2.2.8.1.2) does not contain enough data.
+        /// The fipsInformation and dataSignature fields of the Fast-Path Input Event PDU (section 2.2.8.1.2) do not contain enough data.
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT = 0x000010E0,
 
         /// <summary>
-        ///  Possible value.
+        /// One of two possible errors:
+        /// There is not enough data in the Client Network Data (section 2.2.1.3.4) to read the virtual channel configuration data.
+        /// There is not enough data to read a complete Channel PDU Header (section 2.2.6.1.1).
         /// </summary>
         ERRINFO_VCHANNELDATATOOSHORT = 0x000010E1,
 
         /// <summary>
-        ///  Possible value.
+        /// One of four possible errors:
+        /// There is not enough data to process Control PDU Data (section 2.2.1.15.1).
+        /// There is not enough data to read a complete Share Control Header (section 2.2.8.1.1.1.1).
+        /// There is not enough data to read a complete Share Data Header (section 2.2.8.1.1.1.2) of a Slow-Path Data PDU (section 2.2.8.1.1.1.1).
+        /// There is not enough data to process Font List PDU Data (section 2.2.1.18.1).
         /// </summary>
         ERRINFO_SHAREDATATOOSHORT = 0x000010E2,
 
         /// <summary>
-        ///  Possible value.
+        /// One of two possible errors:
+        /// There is not enough data to process Suppress Output PDU Data (section 2.2.11.3.1).
+        /// The allowDisplayUpdates field of the Suppress Output PDU Data (section 2.2.11.3.1) is invalid.
         /// </summary>
         ERRINFO_BADSUPRESSOUTPUTPDU = 0x000010E3,
 
         /// <summary>
-        ///  Possible value.
+        /// One of two possible errors:
+        /// There is not enough data to read the shareControlHeader, shareId, originatorId, lengthSourceDescriptor, and lengthCombinedCapabilities fields of the Confirm Active PDU Data (section 2.2.1.13.2.1).
+        /// There is not enough data to read the sourceDescriptor, numberCapabilities, pad2Octets, and capabilitySets fields of the Confirm Active PDU Data (section 2.2.1.13.2.1).
         /// </summary>
         ERRINFO_CONFIRMACTIVEPDUTOOSHORT = 0x000010E5,
 
         /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_FLOWPDUTOOSHORT = 0x000010E6,
-
-        /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the capabilitySetType and the lengthCapability fields in a received Capability Set (section 2.2.1.13.1.1.1).
         /// </summary>
         ERRINFO_CAPABILITYSETTOOSMALL = 0x000010E7,
 
         /// <summary>
-        ///  Possible value.
+        /// A Capability Set (section 2.2.1.13.1.1.1) has been received with a lengthCapability field that contains a value greater than the total length of the data received.
         /// </summary>
         ERRINFO_CAPABILITYSETTOOLARGE = 0x000010E8,
 
         /// <summary>
-        ///  Possible value.
+        /// One of two possible errors:
+        /// Both the colorPointerCacheSize and pointerCacheSize fields in the Pointer Capability Set (section 2.2.7.1.5) are set to zero.
+        /// The pointerCacheSize field in the Pointer Capability Set (section 2.2.7.1.5) is not present, and the colorPointerCacheSize field is set to zero.
         /// </summary>
         ERRINFO_NOCURSORCACHE = 0x000010E9,
 
         /// <summary>
-        ///  Possible value.
+        /// The capabilities received from the client in the Confirm Active PDU (section 2.2.1.13.2) were not accepted by the server.
         /// </summary>
         ERRINFO_BADCAPABILITIES = 0x000010EA,
 
         /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA = 0x000010EB,
-
-        /// <summary>
-        ///  Possible value.
+        /// An error occurred while using the bulk compressor (section 3.1.8 and [MS-RDPEGDI] section 3.1.8) to decompress a Virtual Channel PDU (section 2.2.6.1) 
         /// </summary>
         ERRINFO_VIRTUALCHANNELDECOMPRESSIONERR = 0x000010EC,
 
         /// <summary>
-        ///  Possible value.
+        /// An invalid bulk compression package was specified in the flags field of the Channel PDU Header (section 2.2.6.1.1).
         /// </summary>
         ERRINFO_INVALIDVCCOMPRESSIONTYPE = 0x000010ED,
 
         /// <summary>
-        ///  Possible value.
+        /// An invalid MCS channel ID was specified in the mcsPdu field of the Virtual Channel PDU (section 2.2.6.1).
         /// </summary>
         ERRINFO_INVALIDCHANNELID = 0x000010EF,
 
         /// <summary>
-        ///  Possible value.
+        /// The client requested more than the maximum allowed 31 static virtual channels in the Client Network Data (section 2.2.1.3.4).
         /// </summary>
         ERRINFO_VCHANNELSTOOMANY = 0x000010F0,
 
         /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADSERVERCERTIFICATEDATA = 0x000010F2,
-
-        /// <summary>
-        ///  Possible value.
+        /// The INFO_RAIL flag (0x00008000) MUST be set in the flags field of the Info Packet (section 2.2.1.11.1.1) as the session on the remote server can only host remote applications.
         /// </summary>
         ERRINFO_REMOTEAPPSNOTENABLED = 0x000010F3,
 
         /// <summary>
-        ///  Possible value.
+        /// The client sent a Persistent Key List PDU (section 2.2.1.17) without including the prerequisite Revision 2 Bitmap Cache Capability Set (section 2.2.7.1.4.2) in the Confirm Active PDU (section 2.2.1.13.2).
         /// </summary>
         ERRINFO_CACHECAPNOTSET = 0x000010F4,
 
         /// <summary>
-        ///  Possible value.
+        /// The NumInfoBlocks field in the Bitmap Cache Error PDU Data is inconsistent with the amount of data in the Info field ([MS-RDPEGDI] section 2.2.2.3.1.1). 
         /// </summary>
         ERRINFO_BITMAPCACHEERRORPDUBADLENGTH2 = 0x000010F5,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to process an Offscreen Bitmap Cache Error PDU ([MS-RDPEGDI] section 2.2.2.3.2).
         /// </summary>
-        ERRINFO_BITMAPCACHEERRORPDUBADLENGTH3 = 0x000010F6,
+        ERRINFO_OFFSCRCACHEERRORPDUBADLENGTH = 0x000010F6,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to process a DrawNineGrid Cache Error PDU ([MS-RDPEGDI] section 2.2.2.3.3).
         /// </summary>
-        ERRINFO_BITMAPCACHEERRORPDUBADLENGTH4 = 0x000010F7,
+        ERRINFO_DNGCACHEERRORPDUBADLENGTH = 0x000010F7,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to process a GDI+ Error PDU ([MS-RDPEGDI] section 2.2.2.3.4).
         /// </summary>
-        ERRINFO_BITMAPCACHEERRORPDUBADLENGTH5 = 0x000010F8,
+        ERRINFO_GDIPLUSPDUBADLENGTH = 0x000010F8,
 
         /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA2 = 0x000010FE,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA3 = 0x000010FF,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA4 = 0x00001100,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA5 = 0x00001101,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA6 = 0x00001102,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA7 = 0x00001103,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA8 = 0x00001104,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA9 = 0x00001105,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA10 = 0x00001106,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA11 = 0x00001107,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA12 = 0x00001108,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA13 = 0x00001109,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA14 = 0x0000110A,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA15 = 0x0000110B,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA16 = 0x0000110C,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA17 = 0x0000110D,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA18 = 0x0000110E,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA19 = 0x0000110F,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_BADUSERDATA20 = 0x00001110,
-
-        /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read a Basic Security Header (section 2.2.8.1.1.2.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT2 = 0x00001111,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read a Non-FIPS Security Header (section 2.2.8.1.1.2.2) or FIPS Security Header (section 2.2.8.1.1.2.3).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT3 = 0x00001112,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the basicSecurityHeader and length fields of the Security Exchange PDU Data (section 2.2.1.10.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT4 = 0x00001113,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the CodePage, flags, cbDomain, cbUserName, cbPassword, cbAlternateShell, cbWorkingDir, Domain, UserName, Password, AlternateShell, and WorkingDir fields in the Info Packet (section 2.2.1.11.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT5 = 0x00001114,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the CodePage, flags, cbDomain, cbUserName, cbPassword, cbAlternateShell, and cbWorkingDir fields in the Info Packet (section 2.2.1.11.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT6 = 0x00001115,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the clientAddressFamily and cbClientAddress fields in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT7 = 0x00001116,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the clientAddress field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT8 = 0x00001117,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the cbClientDir field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT9 = 0x00001118,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the clientDir field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT10 = 0x00001119,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the clientTimeZone field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT11 = 0x0000111A,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the clientSessionId field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT12 = 0x0000111B,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the performanceFlags field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT13 = 0x0000111C,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the cbAutoReconnectCookie field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT14 = 0x0000111D,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the autoReconnectCookie field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT15 = 0x0000111E,
 
         /// <summary>
-        ///  Possible value.
+        /// The cbAutoReconnectCookie field in the Extended Info Packet (section 2.2.1.11.1.1.1) contains a value which is larger than the maximum allowed length of 128 bytes.
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT16 = 0x0000111F,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the clientAddressFamily and cbClientAddress fields in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT17 = 0x00001120,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the clientAddress field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT18 = 0x00001121,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the cbClientDir field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT19 = 0x00001122,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the clientDir field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT20 = 0x00001123,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the clientTimeZone field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT21 = 0x00001124,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the clientSessionId field in the Extended Info Packet (section 2.2.1.11.1.1.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT22 = 0x00001125,
 
         /// <summary>
-        ///  Possible value.
+        /// There is not enough data to read the Client Info PDU Data (section 2.2.1.11.1).
         /// </summary>
         ERRINFO_SECURITYDATATOOSHORT23 = 0x00001126,
 
         /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_SECURITYDATATOOSHORT24 = 0x00001127,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_SECURITYDATATOOSHORT25 = 0x00001128,
-
-        /// <summary>
-        ///  Possible value.
+        /// The number of TS_MONITOR_DEF (section 2.2.1.3.6.1) structures present in the monitorDefArray field of the Client Monitor Data (section 2.2.1.3.6) is less than the value specified in monitorCount field.
         /// </summary>
         ERRINFO_BADMONITORDATA = 0x00001129,
 
         /// <summary>
-        /// The server-side decompression buffer is invalid, or the size of the decompressed VC data exceeds 
-        /// the chunking size specified in the Virtual Channel Capability Set (section 2.2.7.1.10).
+        /// The server-side decompression buffer is invalid, or the size of the decompressed VC data exceeds the chunking size specified in the Virtual Channel Capability Set (section 2.2.7.1.10).
         /// </summary>
         ERRINFO_VCDECOMPRESSEDREASSEMBLEFAILED = 0x0000112A,
 
         /// <summary>
-        /// The size of a received Virtual Channel PDU (section 2.2.6.1) exceeds the chunking size 
-        /// specified in the Virtual Channel Capability Set (section 2.2.7.1.10).
+        /// The size of a received Virtual Channel PDU (section 2.2.6.1) exceeds the chunking size specified in the Virtual Channel Capability Set (section 2.2.7.1.10).
         /// </summary>
         ERRINFO_VCDATATOOLONG = 0x0000112B,
 
@@ -10094,29 +9995,41 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ERRINFO_VCDECODINGERROR = 0x00001133,
 
         /// <summary>
-        ///  Possible value.
+        /// The width or height of the virtual desktop defined by the monitor layout in the Client Monitor Data (section 2.2.1.3.6) is larger than the maximum allowed value of 32,766.
+        /// </summary>
+        ERRINFO_VIRTUALDESKTOPTOOLARGE = 0x00001134,
+
+        /// <summary>
+        /// The monitor geometry defined by the Client Monitor Data (section 2.2.1.3.6) is invalid.
+        /// </summary>
+        ERRINFO_MONITORGEOMETRYVALIDATIONFAILED = 0x00001135,
+
+        /// <summary>
+        /// The monitorCount field in the Client Monitor Data (section 2.2.1.3.6) is too large.
+        /// </summary>
+        ERRINFO_INVALIDMONITORCOUNT = 0x00001136,
+
+        /// <summary>
+        /// An attempt to update the session keys while using Standard RDP Security mechanisms (section 5.3.7) failed.
         /// </summary>
         ERRINFO_UPDATESESSIONKEYFAILED = 0x00001191,
 
         /// <summary>
-        ///  Possible value.
+        /// One of two possible error conditions:
+        /// Decryption using Standard RDP Security mechanisms (section 5.3.6) failed.
+        /// Session key creation using Standard RDP Security mechanisms (section 5.3.5) failed.
         /// </summary>
         ERRINFO_DECRYPTFAILED = 0x00001192,
 
         /// <summary>
-        ///  Possible value.
+        /// Encryption using Standard RDP Security mechanisms (section 5.3.6) failed.
         /// </summary>
         ERRINFO_ENCRYPTFAILED = 0x00001193,
 
         /// <summary>
-        ///  Possible value.
+        /// Failed to find a usable Encryption Method (section 5.3.2) in the encryptionMethods field of the Client Security Data (section 2.2.1.4.3).
         /// </summary>
         ERRINFO_ENCPKGMISMATCH = 0x00001194,
-
-        /// <summary>
-        ///  Possible value.
-        /// </summary>
-        ERRINFO_DECRYPTFAILED2 = 0x00001195,
     }
 
     /// <summary>
@@ -12123,9 +12036,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         public TS_BITMAPCACHE_CELL_CACHE_INFO BitmapCache5CellInfo;
 
         /// <summary>
-        ///  Padding. An array of 8-bit unsigned integers. Values
-        ///  in this field are ignored.
+        ///  A 12-element array of 8-bit, unsigned integers. Paddings.
+        ///  Values in this field are ignored.
         /// </summary>
+        [StaticSize(12)]
         public byte[] Pad3;
 
         /// <summary>
@@ -12393,7 +12307,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             RdpbcgrEncoder.EncodeStructure(encodeBuffer, (uint)keyboardType);
             RdpbcgrEncoder.EncodeStructure(encodeBuffer, keyboardSubType);
             RdpbcgrEncoder.EncodeStructure(encodeBuffer, keyboardFunctionKey);
-            RdpbcgrEncoder.EncodeUnicodeString(encodeBuffer, imeFileName, ConstValue.INPUT_CAP_IME_FLIENAME_SIZE);
+            RdpbcgrEncoder.EncodeUnicodeString(encodeBuffer, imeFileName, ConstValue.INPUT_CAP_IME_FILENAME_SIZE);
             return encodeBuffer.ToArray();
         }
 
@@ -12468,6 +12382,13 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// (see sections 2.2.8.1.1.3.1.1.3 and 2.2.8.1.2.2.3).
         /// </summary>
         TS_INPUT_FLAG_MOUSE_HWHEEL = 0x0100,
+
+        /// <summary>
+        /// Indicates support for Quality of Experience (QoE) Timestamp Event notifications
+        /// (section 2.2.8.1.2.2.6).
+        /// There is no slow-path support for Quality of Experience (QoE) timestamps.
+        /// </summary>
+        TS_INPUT_FLAG_QOE_TIMESTAMPS = 0x0200,
 
     }
 
@@ -14375,11 +14296,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                                        - (fpInputdata.Length % ConstValue.TRIPLE_DES_PAD));
             }
 
-            // encryptionFlags (2 bits): A higher 2-bit field containing the flags 
-            // that describe the cryptographic parameters of the PDU.
-            bool isSalted = ((fpInputHeader.actionCode >> 6) &
-                             (int)encryptionFlags_Values.FASTPATH_INPUT_SECURE_CHECKSUM)
-                             == (int)encryptionFlags_Values.FASTPATH_INPUT_SECURE_CHECKSUM;
+            bool isSalted = fpInputHeader.flags.HasFlag(encryptionFlags_Values.FASTPATH_INPUT_SECURE_CHECKSUM);
+
             context.Encrypt(fpInputdata, isSalted, out encryptedData, out signature);
             if (dataSignature == null)
             {
@@ -14444,15 +14362,12 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 RdpbcgrEncoder.EncodeStructure(fpHeaderData, fipsInformation);
             }
 
-            // encryptionFlags (2 bits): A higher 2-bit field containing the flags 
-            // that describe the cryptographic parameters of the PDU.
-            if (((fpInputHeader.actionCode >> 6) & (int)encryptionFlags_Values.FASTPATH_INPUT_ENCRYPTED)
-                == (int)encryptionFlags_Values.FASTPATH_INPUT_ENCRYPTED)
+            if (fpInputHeader.flags.HasFlag(encryptionFlags_Values.FASTPATH_INPUT_ENCRYPTED))
             {
                 RdpbcgrEncoder.EncodeBytes(fpHeaderData, dataSignature);
             }
 
-            if ((fpInputHeader.actionCode & (0x0F << 2)) == 0)
+            if (fpInputHeader.numEvents == 0)
             {
                 RdpbcgrEncoder.EncodeStructure(fpHeaderData, numberEvents);
             }
@@ -14531,10 +14446,112 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     public partial struct nested_TS_FP_INPUT_PDU_fpInputHeader
     {
         /// <summary>
+        /// Construct TS_FP_INPUT_PDU from a packed byte.
+        /// </summary>
+        /// <param name="data">The packed byte.</param>
+        public nested_TS_FP_INPUT_PDU_fpInputHeader(byte data)
+        {
+            actionCode = data;
+        }
+
+        /// <summary>
+        /// Construct TS_FP_INPUT_PDU by each field.
+        /// </summary>
+        /// <param name="action">The action field.</param>
+        /// <param name="numEvents">The numEvents field.</param>
+        /// <param name="flags">The flags field.</param>
+        public nested_TS_FP_INPUT_PDU_fpInputHeader(actionCode_Values action, int numEvents, encryptionFlags_Values flags)
+        {
+            var vector = new BitVector32();
+
+            vector[actionField] = (int)action;
+
+            vector[numEventsField] = numEvents;
+
+            vector[flagsField] = (int)flags;
+
+            actionCode = (byte)vector.Data;
+        }
+
+        /// <summary>
         ///  Includes actionCode, numberEvents and encryptionFlags.
         /// </summary>
         [FieldOffset(0)]
-        public byte actionCode;
+        private byte actionCode;
+
+        private static BitVector32.Section actionField = BitVector32.CreateSection(0x3);
+
+        private static BitVector32.Section numEventsField = BitVector32.CreateSection(0xF, actionField);
+
+        private static BitVector32.Section flagsField = BitVector32.CreateSection(0x3, numEventsField);
+
+        /// <summary>
+        /// A 2-bit, unsigned integer that indicates whether the PDU is in fast-path or slow-path format.
+        /// </summary>
+        public actionCode_Values action
+        {
+            get
+            {
+                var vector = new BitVector32(actionCode);
+
+                return (actionCode_Values)vector[actionField];
+            }
+
+            set
+            {
+                var vector = new BitVector32(actionCode);
+
+                vector[actionField] = (int)value;
+
+                actionCode = (byte)vector.Data;
+            }
+        }
+
+        /// <summary>
+        /// A 4-bit, unsigned integer that collapses the number of fast-path input events packed together in the fpInputEvents field into 4 bits if the number of events is in the range 1 to 15.
+        /// If the number of input events is greater than 15, then the numEvents bit field in the fast-path header byte MUST be set to zero, and the numEvents optional field inserted after the dataSignature field. 
+        /// This allows up to 255 input events in one PDU.
+        /// </summary>
+        public int numEvents
+        {
+            get
+            {
+                var vector = new BitVector32(actionCode);
+
+                return vector[numEventsField];
+            }
+
+            set
+            {
+                var vector = new BitVector32(actionCode);
+
+                vector[numEventsField] = value;
+
+                actionCode = (byte)vector.Data;
+            }
+        }
+
+        /// <summary>
+        /// A 2-bit, unsigned integer that contains the flags describing the cryptographic parameters of the PDU.
+        /// </summary>
+        public encryptionFlags_Values flags
+        {
+            get
+            {
+                var vector = new BitVector32(actionCode);
+
+                return (encryptionFlags_Values)vector[flagsField];
+            }
+
+            set
+            {
+                var vector = new BitVector32(actionCode);
+
+                vector[flagsField] = (int)value;
+
+                actionCode = (byte)vector.Data;
+            }
+        }
     }
 
     /// <summary>
@@ -14717,6 +14734,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ///  Indicates a Fast-Path Unicode Keyboard Event.
         /// </summary>
         FASTPATH_INPUT_EVENT_UNICODE = 0x4,
+
+        /// <summary>
+        /// Indicates a Fast-Path Quality of Experience (QoE) Timestamp Event.
+        /// </summary>
+        FASTPATH_INPUT_EVENT_QOE_TIMESTAMP = 0x6,
     }
 
     /// <summary>
@@ -14791,6 +14813,28 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// </summary>
         [FieldOffset(0)]
         public ushort unicodeCode;
+    }
+
+    /// <summary>
+    /// The TS_FP_QOETIMESTAMP_EVENT structure is used to enable the calculation of
+    /// Quality of Experience (QoE) metrics. This event is sent solely for informational
+    /// and debugging purposes and MUST NOT be transmitted to the server if the
+    /// TS_INPUT_FLAG_QOE_TIMESTAMPS (0x0200) flag was not received in the
+    /// Input Capability Set (section 2.2.7.1.6).
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = 4)]
+    public partial struct TS_FP_QOETIMESTAMP_EVENT
+    {
+        /// <summary>
+        ///  A 32-bit, unsigned integer.
+        ///  A client-generated timestamp, in milliseconds,
+        ///  that indicates when the current input batch was encoded by the client.
+        ///  The value of the first timestamp sent by the client implicitly defines
+        ///  the origin for all subsequent timestamps.
+        ///  The server is responsible for handling roll-over of the timestamp.
+        /// </summary>
+        [FieldOffset(0)]
+        public uint timestamp;
     }
 
     /// <summary>
@@ -16205,6 +16249,119 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     }
 
     /// <summary>
+    /// Type of fpOutputHeader in TS_FP_UPDATE_PDU.
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = 1)]
+    public class nested_TS_FP_UPDATE_PDU_fpOutputHeader
+    {
+        /// <summary>
+        /// Construct nested_TS_FP_UPDATE_PDU_fpOutputHeader from a packed byte.
+        /// </summary>
+        /// <param name="data">The packed byte.</param>
+        public nested_TS_FP_UPDATE_PDU_fpOutputHeader(byte data)
+        {
+            fpOutputHeader = data;
+        }
+
+        /// <summary>
+        /// Construct nested_TS_FP_UPDATE_PDU_fpOutputHeader by each field.
+        /// </summary>
+        /// <param name="action">The action field.</param>
+        /// <param name="reserved">The reserved field.</param>
+        /// <param name="flags">The flags field.</param>
+        public nested_TS_FP_UPDATE_PDU_fpOutputHeader(
+            nested_TS_FP_UPDATE_PDU_fpOutputHeader_actionCode_Values action = nested_TS_FP_UPDATE_PDU_fpOutputHeader_actionCode_Values.FASTPATH_OUTPUT_ACTION_FASTPATH,
+            reserved_Values reserved = reserved_Values.V1,
+            encryptionFlagsChgd_Values flags = encryptionFlagsChgd_Values.None)
+        {
+            var vector = new BitVector32();
+
+            vector[actionField] = (int)action;
+
+            vector[reservedField] = (int)reserved;
+
+            vector[flagsField] = (int)flags;
+
+            fpOutputHeader = (byte)vector.Data;
+        }
+
+        [FieldOffset(0)]
+        private byte fpOutputHeader;
+
+        private static BitVector32.Section actionField = BitVector32.CreateSection(0x3);
+
+        private static BitVector32.Section reservedField = BitVector32.CreateSection(0xF, actionField);
+
+        private static BitVector32.Section flagsField = BitVector32.CreateSection(0x3, reservedField);
+
+        /// <summary>
+        /// A 2-bit, unsigned integer that indicates whether the PDU is in fast-path or slow-path format.
+        /// </summary>
+        public nested_TS_FP_UPDATE_PDU_fpOutputHeader_actionCode_Values action
+        {
+            get
+            {
+                var vector = new BitVector32(fpOutputHeader);
+
+                return (nested_TS_FP_UPDATE_PDU_fpOutputHeader_actionCode_Values)vector[actionField];
+            }
+
+            set
+            {
+                var vector = new BitVector32(fpOutputHeader);
+
+                vector[actionField] = (int)value;
+
+                fpOutputHeader = (byte)vector.Data;
+            }
+        }
+
+        /// <summary>
+        /// A 4-bit, unsigned integer that is unused and reserved for future use. This field MUST be set to zero.
+        /// </summary>
+        public reserved_Values reserved
+        {
+            get
+            {
+                var vector = new BitVector32(fpOutputHeader);
+
+                return (reserved_Values)vector[reservedField];
+            }
+
+            set
+            {
+                var vector = new BitVector32(fpOutputHeader);
+
+                vector[reservedField] = (int)value;
+
+                fpOutputHeader = (byte)vector.Data;
+            }
+        }
+
+        /// <summary>
+        /// A 2-bit, unsigned integer that contains flags describing the cryptographic parameters of the PDU.
+        /// </summary>
+        public encryptionFlagsChgd_Values flags
+        {
+            get
+            {
+                var vector = new BitVector32(fpOutputHeader);
+
+                return (encryptionFlagsChgd_Values)vector[flagsField];
+            }
+
+            set
+            {
+                var vector = new BitVector32(fpOutputHeader);
+
+                vector[flagsField] = (int)value;
+
+                fpOutputHeader = (byte)vector.Data;
+            }
+        }
+    }
+
+    /// <summary>
     ///  Fast-path revises server output packets from the first
     ///  byte with the goal of improving bandwidth. The TPKT
     ///  (see [T123]), X.224 (see [X224]) and MCS SDin (see
@@ -16231,7 +16388,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ///  dataAction code The format of the fpOutputHeader byte
         ///  is described by the following bitmask diagram:
         /// </summary>
-        public byte fpOutputHeader;
+        public nested_TS_FP_UPDATE_PDU_fpOutputHeader fpOutputHeader;
 
         /// <summary>
         ///  An 8-bit unsigned integer. If the most significant bit
@@ -16324,11 +16481,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                                            - (fpOutputdata.Length % ConstValue.TRIPLE_DES_PAD));
                 }
 
-                // encryptionFlags (2 bits): A higher 2-bit field containing the flags 
-                // that describe the cryptographic parameters of the PDU.
-                bool isSalted = ((fpOutputHeader >> 6) &
-                                 (int)encryptionFlags_Values.FASTPATH_INPUT_SECURE_CHECKSUM)
-                                 == (int)encryptionFlags_Values.FASTPATH_INPUT_SECURE_CHECKSUM;
+                bool isSalted = fpOutputHeader.flags.HasFlag(encryptionFlagsChgd_Values.FASTPATH_OUTPUT_SECURE_CHECKSUM);
+
                 serverSessionContext.ServerEncrypt(fpOutputdata, isSalted, out encryptedData, out signature);
                 if (dataSignature == null)
                 {
@@ -16405,10 +16559,9 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 RdpbcgrEncoder.EncodeStructure(fpHeaderData, fipsInformation);
             }
 
-            // encryptionFlags (2 bits): A higher 2-bit field containing the flags 
-            // that describe the cryptographic parameters of the PDU.
-            if (((fpOutputHeader >> 6) & (int)encryptionFlags_Values.FASTPATH_INPUT_ENCRYPTED)
-                == (int)encryptionFlags_Values.FASTPATH_INPUT_ENCRYPTED)
+            bool isEncrypted = fpOutputHeader.flags.HasFlag(encryptionFlagsChgd_Values.FASTPATH_OUTPUT_SECURE_CHECKSUM);
+
+            if (isEncrypted)
             {
                 RdpbcgrEncoder.EncodeBytes(fpHeaderData, dataSignature);
             }
@@ -16426,7 +16579,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     if (fpOutputUpdates[i].GetType() == typeof(TS_FP_UPDATE_PALETTE))
                     {
                         RdpbcgrEncoder.EncodeStructure(fastpathOutputData, fpOutputUpdates[i].updateHeader);
-                        if ((int)fpOutputUpdates[i].updateHeader >> 6 == 2)
+                        if (fpOutputUpdates[i].updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
                         {
                             RdpbcgrEncoder.EncodeStructure(fastpathOutputData, (byte)fpOutputUpdates[i].compressionFlags);
                         }
@@ -16438,7 +16591,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     else if (fpOutputUpdates[i].GetType() == typeof(TS_FP_UPDATE_BITMAP))
                     {
                         RdpbcgrEncoder.EncodeStructure(fastpathOutputData, fpOutputUpdates[i].updateHeader);
-                        if ((int)fpOutputUpdates[i].updateHeader >> 6 == 2)
+
+                        if (fpOutputUpdates[i].updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
                         {
                             RdpbcgrEncoder.EncodeStructure(fastpathOutputData, (byte)fpOutputUpdates[i].compressionFlags);
                         }
@@ -16450,7 +16604,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     else if (fpOutputUpdates[i].GetType() == typeof(TS_FP_UPDATE_SYNCHRONIZE))
                     {
                         RdpbcgrEncoder.EncodeStructure(fastpathOutputData, fpOutputUpdates[i].updateHeader);
-                        if ((int)fpOutputUpdates[i].updateHeader >> 6 == 2)
+
+                        if (fpOutputUpdates[i].updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
                         {
                             RdpbcgrEncoder.EncodeStructure(fastpathOutputData, (byte)fpOutputUpdates[i].compressionFlags);
                         }
@@ -16460,7 +16615,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     else if (fpOutputUpdates[i].GetType() == typeof(TS_FP_POINTERPOSATTRIBUTE))
                     {
                         RdpbcgrEncoder.EncodeStructure(fastpathOutputData, fpOutputUpdates[i].updateHeader);
-                        if ((int)fpOutputUpdates[i].updateHeader >> 6 == 2)
+                        if (fpOutputUpdates[i].updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
                         {
                             RdpbcgrEncoder.EncodeStructure(fastpathOutputData, (byte)fpOutputUpdates[i].compressionFlags);
                         }
@@ -16472,7 +16627,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     else if (fpOutputUpdates[i].GetType() == typeof(TS_FP_SYSTEMPOINTERHIDDENATTRIBUTE))
                     {
                         RdpbcgrEncoder.EncodeStructure(fastpathOutputData, fpOutputUpdates[i].updateHeader);
-                        if ((int)fpOutputUpdates[i].updateHeader >> 6 == 2)
+
+                        if (fpOutputUpdates[i].updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
                         {
                             RdpbcgrEncoder.EncodeStructure(fastpathOutputData, (byte)fpOutputUpdates[i].compressionFlags);
                         }
@@ -16482,7 +16638,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     else if (fpOutputUpdates[i].GetType() == typeof(TS_FP_SYSTEMPOINTERDEFAULTATTRIBUTE))
                     {
                         RdpbcgrEncoder.EncodeStructure(fastpathOutputData, fpOutputUpdates[i].updateHeader);
-                        if ((int)fpOutputUpdates[i].updateHeader >> 6 == 2)
+
+                        if (fpOutputUpdates[i].updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
                         {
                             RdpbcgrEncoder.EncodeStructure(fastpathOutputData, (byte)fpOutputUpdates[i].compressionFlags);
                         }
@@ -16492,7 +16649,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     else if (fpOutputUpdates[i].GetType() == typeof(TS_FP_COLORPOINTERATTRIBUTE))
                     {
                         RdpbcgrEncoder.EncodeStructure(fastpathOutputData, fpOutputUpdates[i].updateHeader);
-                        if ((int)fpOutputUpdates[i].updateHeader >> 6 == 2)
+
+                        if (fpOutputUpdates[i].updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
                         {
                             RdpbcgrEncoder.EncodeStructure(fastpathOutputData, (byte)fpOutputUpdates[i].compressionFlags);
                         }
@@ -16504,7 +16662,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     else if (fpOutputUpdates[i].GetType() == typeof(TS_FP_POINTERATTRIBUTE))
                     {
                         RdpbcgrEncoder.EncodeStructure(fastpathOutputData, fpOutputUpdates[i].updateHeader);
-                        if ((int)fpOutputUpdates[i].updateHeader >> 6 == 2)
+
+                        if (fpOutputUpdates[i].updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
                         {
                             RdpbcgrEncoder.EncodeStructure(fastpathOutputData, (byte)fpOutputUpdates[i].compressionFlags);
                         }
@@ -16516,7 +16675,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     else if (fpOutputUpdates[i].GetType() == typeof(TS_FP_CACHEDPOINTERATTRIBUTE))
                     {
                         RdpbcgrEncoder.EncodeStructure(fastpathOutputData, fpOutputUpdates[i].updateHeader);
-                        if ((int)fpOutputUpdates[i].updateHeader >> 6 == 2)
+
+                        if (fpOutputUpdates[i].updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
                         {
                             RdpbcgrEncoder.EncodeStructure(fastpathOutputData, (byte)fpOutputUpdates[i].compressionFlags);
                         }
@@ -16529,8 +16689,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     {
                         RdpbcgrEncoder.EncodeStructure(fastpathOutputData, fpOutputUpdates[i].updateHeader);
 
-                        // The two bit compression flag in updateHeader indicates if the compressionFlags field is present
-                        if ((int)fpOutputUpdates[i].updateHeader >> 6 == 2)
+                        if (fpOutputUpdates[i].updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
                         {
                             RdpbcgrEncoder.EncodeStructure(fastpathOutputData, (byte)fpOutputUpdates[i].compressionFlags);
                         }
@@ -16922,6 +17081,117 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
     }
 
     /// <summary>
+    /// Type of updateHeader in TS_FP_UPDATE.
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = 1)]
+    public class nested_TS_FP_UPDATE_updateHeader
+    {
+        /// <summary>
+        /// Construct nested_TS_FP_UPDATE_updateHeader from a packed byte.
+        /// </summary>
+        /// <param name="data">The packed byte.</param>
+        public nested_TS_FP_UPDATE_updateHeader(byte data)
+        {
+            updateHeader = data;
+        }
+
+        /// <summary>
+        /// Construct nested_TS_FP_UPDATE_updateHeader by each field.
+        /// </summary>
+        /// <param name="updateCode">The updateCode field.</param>
+        /// <param name="fragmentation">The fragmentation field.</param
+        /// <param name="compression">The compression field.</param>
+        public nested_TS_FP_UPDATE_updateHeader(updateCode_Values updateCode, fragmentation_Value fragmentation = fragmentation_Value.FASTPATH_FRAGMENT_SINGLE, compression_Values compression = compression_Values.None)
+        {
+            var vector = new BitVector32();
+
+            vector[updateCodeField] = (int)updateCode;
+
+            vector[fragmentationField] = (int)fragmentation;
+
+            vector[compressionField] = (int)compression;
+
+            updateHeader = (byte)vector.Data;
+        }
+
+        [FieldOffset(0)]
+        private byte updateHeader;
+
+        private static BitVector32.Section updateCodeField = BitVector32.CreateSection(0xF);
+
+        private static BitVector32.Section fragmentationField = BitVector32.CreateSection(0x3, updateCodeField);
+
+        private static BitVector32.Section compressionField = BitVector32.CreateSection(0x3, fragmentationField);
+
+        /// <summary>
+        /// A 4-bit, unsigned integer that specifies the type code of the update.
+        /// </summary>
+        public updateCode_Values updateCode
+        {
+            get
+            {
+                var vector = new BitVector32(updateHeader);
+
+                return (updateCode_Values)vector[updateCodeField];
+            }
+
+            set
+            {
+                var vector = new BitVector32(updateHeader);
+
+                vector[updateCodeField] = (int)value;
+
+                updateHeader = (byte)vector.Data;
+            }
+        }
+
+        /// <summary>
+        /// A 2-bit, unsigned integer that specifies the fast-path fragment sequencing information. 
+        /// Support for fast-path fragmentation is specified in the Multifragment Update Capability Set.
+        /// </summary>
+        public fragmentation_Value fragmentation
+        {
+            get
+            {
+                var vector = new BitVector32(updateHeader);
+
+                return (fragmentation_Value)vector[fragmentationField];
+            }
+
+            set
+            {
+                var vector = new BitVector32(updateHeader);
+
+                vector[fragmentationField] = (int)value;
+
+                updateHeader = (byte)vector.Data;
+            }
+        }
+
+        /// <summary>
+        /// A 2-bit, unsigned integer that specifies compression parameters.
+        /// </summary>
+        public compression_Values compression
+        {
+            get
+            {
+                var vector = new BitVector32(updateHeader);
+
+                return (compression_Values)vector[compressionField];
+            }
+
+            set
+            {
+                var vector = new BitVector32(updateHeader);
+
+                vector[compressionField] = (int)value;
+
+                updateHeader = (byte)vector.Data;
+            }
+        }
+    }
+
+    /// <summary>
     ///  The TS_FP_UPDATE structure is used to describe and encapsulate
     ///  the data for a fast-path update sent from server to
     ///  client. All fast-path updates conform to this basic
@@ -16941,7 +17211,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ///  Fast-path fragment sequencing
         ///  Compression usage indication
         /// </summary>
-        public byte updateHeader;
+        public nested_TS_FP_UPDATE_updateHeader updateHeader;
 
         /// <summary>
         ///  An 8-bit unsigned integer. Optional compression flags.
@@ -16956,6 +17226,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         ///  data in the updateData field.
         /// </summary>
         public ushort size;
+
+        /// <summary>
+        /// Optional and variable-length data specific to the update.
+        /// </summary>
+        public byte[] updateData;
     }
 
     /// <summary>
@@ -20266,6 +20541,109 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         SEC_REDIRECTION_PKT = 0x0400
     }
 
+    public enum CERTIFICATE_META_ELEMENT_TypeEnum : UInt32
+    {
+        ELEMENT_TYPE_CERTIFICATE = 32
+    }
+
+    public enum CERTIFICATE_META_ELEMENT_EncodingEnum : UInt32
+    {
+        ENCODING_TYPE_ASN1_DER = 1
+    }
+
+    /// <summary>
+    /// Certificate Meta Element (CERTIFICATE_META_ELEMENT)
+    /// The CERTIFICATE_META_ELEMENT structure specifies an element contained within a Target Certificate Container structure.
+    /// </summary>
+    public class CERTIFICATE_META_ELEMENT
+    {
+        /// <summary>
+        /// type (4 bytes): A 32-bit, unsigned integer specifying the type of the data in the elementData field.
+        /// All values SHOULD be ignored except for ELEMENT_TYPE_CERTIFICATE (32), which indicates that the element is an X.509 certificate.
+        /// </summary>
+        public UInt32 type;
+
+        /// <summary>
+        /// encoding (4 bytes): A 32-bit, unsigned integer specifying the encoding used to serialize the data in the elementData field.
+        /// All values SHOULD be ignored except for ENCODING_TYPE_ASN1_DER (1), which indicates that the element is encoded using the ASN.1 DER scheme.
+        /// </summary>
+        public UInt32 encoding;
+
+        /// <summary>
+        /// elementSize (4 bytes): A 32-bit, unsigned integer specifying the size, in bytes, of the elementData field.
+        /// </summary>
+        public UInt32 elementSize;
+
+        /// <summary>
+        /// elementData (variable): A variable-length array of bytes containing the certificate meta element data.
+        /// </summary>
+        public byte[] elementData;
+
+        public byte[] Encode()
+        {
+            var result = new List<byte>();
+
+            RdpbcgrEncoder.EncodeStructure(result, type);
+
+            RdpbcgrEncoder.EncodeStructure(result, encoding);
+
+            RdpbcgrEncoder.EncodeStructure(result, elementSize);
+
+            RdpbcgrEncoder.EncodeBytes(result, elementData);
+
+            return result.ToArray();
+        }
+
+        public CERTIFICATE_META_ELEMENT Clone()
+        {
+            var result = new CERTIFICATE_META_ELEMENT();
+
+            result.type = type;
+
+            result.encoding = encoding;
+
+            result.elementSize = elementSize;
+
+            result.elementData = RdpbcgrUtility.CloneByteArray(elementData);
+
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Target Certificate Container (TARGET_CERTIFICATE_CONTAINER)
+    /// The TARGET_CERTIFICATE_CONTAINER structure is used to wrap an X.509 certificate.
+    /// It contains an array of Certificate Meta Element structures.
+    /// The element of type ELEMENT_TYPE_CERTIFICATE(32) and encoding ENCODING_TYPE_ASN1_DER(1) contains the X.509 certificate.
+    /// </summary>
+    public class TARGET_CERTIFICATE_CONTAINER
+    {
+        /// <summary>
+        /// elements (variable): An array of Certificate Meta Element structures.
+        /// All elements in this array SHOULD be ignored, except for the element of type ELEMENT_TYPE_CERTIFICATE (32) and encoding ENCODING_TYPE_ASN1_DER (1).
+        /// </summary>
+        public CERTIFICATE_META_ELEMENT[] elements;
+
+        public byte[] Encode()
+        {
+            var result = elements
+                            .Select(element => element.Encode().AsEnumerable())
+                            .Aggregate((a, b) => a.Concat(b))
+                            .ToArray();
+
+            return result;
+        }
+
+        public TARGET_CERTIFICATE_CONTAINER Clone()
+        {
+            var result = new TARGET_CERTIFICATE_CONTAINER();
+
+            result.elements = elements.Select(element => element.Clone()).ToArray();
+
+            return result;
+        }
+    }
+
     /// <summary>
     /// 2.2.13.1	Server Redirection Packet (RDP_SERVER_REDIRECTION_PACKET)
     /// The RDP_SERVER_REDIRECTION_PACKET structure contains information to enable a client 
@@ -20409,7 +20787,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         public UInt32 TargetCertificateLength;
 
         /// <summary>
-        /// TargetCertificate (variable): A variable-length array of bytes containing the X.509 certificate of the target server.
+        /// TargetCertificate (variable): A variable-length array of bytes containing a Base64-encoded Target Certificate Container structure in Unicode format that encapsulates the X.509 certificate of the target server.
         /// </summary>
         public byte[] TargetCertificate;
 

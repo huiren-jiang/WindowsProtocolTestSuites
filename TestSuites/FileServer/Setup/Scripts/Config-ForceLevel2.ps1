@@ -59,7 +59,25 @@ if($config -eq $null)
 #----------------------------------------------------------------------------
 $sut = $config.lab.servers.vm | Where {$_.role -match "SUT" -or $_.role -match "Node01"}
 $sutComputerName = $sut.name
-$scaleoutFSName = $config.lab.ha.scaleoutfs.name
+
+# When the SUT is Linux OS, update the hosts file and get the ip address instead of computer name.
+if( $null -ne $sut.os  -and $sut.os -eq "Linux"){
+
+    $ip = $sut.ip
+
+    if(($sut.ip | Measure-Object ).Count -gt 1){
+        $ip = $sut.ip[0]
+    }
+
+    $sutHostString = "$ip $sutComputerName"
+    $sutHostString | Out-File -FilePath "$env:windir\System32\drivers\etc\hosts" -Append -encoding ascii
+
+    $sutComputerName = $ip
+
+    # TODO: Ignore Forcelevel when the SUT is Linux as this tool does not support yet in Linux now.
+    # After update the tool, below exit code will be removed.
+    exit 0
+}
 
 $endPointPath = "$env:SystemDrive\MicrosoftProtocolTests\FileServer\Server-Endpoint"
 $version = Get-ChildItem $endPointPath | where {$_.Attributes -match "Directory" -and $_.Name -match "\d+\.\d+\.\d+\.\d+"} | Sort-Object Name -descending | Select-Object -first 1
@@ -72,12 +90,15 @@ $ShareUtil = "$binDir\ShareUtil.exe"
 Write-Info.ps1 "Configure forcelevel2 for share: ShareForceLevel2"
 CMD /C "$ShareUtil $sutComputerName ShareForceLevel2 SHI1005_FLAGS_FORCE_LEVELII_OPLOCK true" 2>&1 | Write-Info.ps1
 
-if((gwmi win32_computersystem).partofdomain -eq $true -and (Test-Connection -ComputerName $scaleoutFSName -Quiet))
-{
-    Write-Info.ps1 "Configure forcelevel2 for share: SMBClusteredForceLevel2"
-    CMD /C "$ShareUtil $scaleoutFSName SMBClusteredForceLevel2 SHI1005_FLAGS_FORCE_LEVELII_OPLOCK true" 2>&1 | Write-Info.ps1
+if($config.lab.ha){
+    $scaleoutFSName = $config.lab.ha.scaleoutfs.name
+    if((gwmi win32_computersystem).partofdomain -eq $true -and (Test-Connection -ComputerName $scaleoutFSName -Quiet))
+    {
+        Write-Info.ps1 "Configure forcelevel2 for share: SMBClusteredForceLevel2"
+        CMD /C "$ShareUtil $scaleoutFSName SMBClusteredForceLevel2 SHI1005_FLAGS_FORCE_LEVELII_OPLOCK true" 2>&1 | Write-Info.ps1
+    }
+    sleep 5
 }
-sleep 5
 
 #----------------------------------------------------------------------------
 # Ending

@@ -25,7 +25,8 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
         public const string RsvdVersion2 = "RSVDVersion2";
         public const string Fsa = "FSA";
         public const string Sqos = "SQOS";
-        public const string Hvrs = "HVRS";
+        public const string HvrsSmb = "HVRS-SMB";
+        public const string HvrsFsa = "HVRS-FSA";
 
         public const string Auth = "Auth";
         public const string ShareAccessCheck = "ShareAccessCheck";
@@ -49,6 +50,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
         public const string Credit = "Credit";
         public const string Signing = "Signing";
         public const string Encryption = "Encryption";
+        public const string Compression = "Compression";
 
         public const string OplockOnShareWithoutForceLevel2OrSOFS = "OplockOnShareWithoutForceLevel2OrSOFS";
         public const string OplockOnShareWithoutForceLevel2WithSOFS = "OplockOnShareWithoutForceLevel2WithSOFS";
@@ -112,6 +114,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
         public const string WriteFile = "WriteFile";
         public const string FlushCachedData = "FlushCachedData";
         public const string AlternateDataStream = "AlternateDataStream";
+        public const string FileAccess = "FileAccess";
 
         /// <summary>
         /// Indicate this test case is positive

@@ -104,9 +104,9 @@
       <Project>{5BE7E49E-5CB5-4115-98B1-E7E8B10CFCCB}</Project>
       <Name>Swn</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\..\..\..\ProtoSDK\Sspi\Sspi.csproj">
-      <Project>{D0CB354B-2CD3-49C1-8ECA-2F6EBADBCCEE}</Project>
-      <Name>Sspi</Name>
+    <ProjectReference Include="..\..\..\..\..\ProtoSDK\SspiLib\SspiLib.csproj">
+      <Project>{e64bf20f-11d2-49f6-a25b-f4378ab38180}</Project>
+      <Name>SspiLib</Name>
     </ProjectReference>
     <ProjectReference Include="..\..\Common\Adapter\CommonAdapter.csproj">
       <Project>{3FD566BA-E398-461E-B1B6-464B117ED422}</Project>
@@ -134,6 +134,7 @@
     <Compile Include="Basic\MultiCredit.cs" />
     <Compile Include="Basic\SMB2Basic.cs" />
     <Compile Include="Compound\Compound.cs" />
+    <Compile Include="Compression\CompressionTest.cs" />
     <Compile Include="CreateClose\CreateClose.cs" />
     <Compile Include="DurableHandle\SMB2DurableHandleTestBase.cs" />
     <Compile Include="HVRS\MS-FSA_Clarification.cs" />
@@ -159,7 +160,6 @@
     <Compile Include="Replay\Replay.cs" />
     <Compile Include="ResilientHandle\ResilientHandle.cs" />
     <Compile Include="ResilientHandle\ResilientOpenScavengerTimer.cs" />
-    <Compile Include="ResilientHandle\ResilientWithPersistentHandle.cs" />
     <Compile Include="SessionMgmt\SessionMgmt.cs" />
     <Compile Include="SMB2CreateContextResponseChecker.cs" />
     <Compile Include="TreeMgmt\TreeMgmt.cs" />
@@ -172,6 +172,7 @@
     </Content>
     <Content Include="MS-SMB2_ServerTestSuite.ptfconfig" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <Target Name="AfterBuild">
     <Copy SourceFiles="$(TargetDir)$(TargetFileName)" DestinationFolder="$(TestSuiteRoot)\drop\TestSuites\FileServer\Bin\" />

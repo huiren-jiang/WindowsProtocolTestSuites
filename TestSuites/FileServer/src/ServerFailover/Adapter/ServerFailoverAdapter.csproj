@@ -66,9 +66,9 @@
       <Project>{C7F08825-D3C9-4DDD-9BA3-06733B1ABE36}</Project>
       <Name>Smb2</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\..\..\..\ProtoSDK\Sspi\Sspi.csproj">
-      <Project>{D0CB354B-2CD3-49C1-8ECA-2F6EBADBCCEE}</Project>
-      <Name>Sspi</Name>
+    <ProjectReference Include="..\..\..\..\..\ProtoSDK\SspiLib\SspiLib.csproj">
+      <Project>{e64bf20f-11d2-49f6-a25b-f4378ab38180}</Project>
+      <Name>SspiLib</Name>
     </ProjectReference>
     <ProjectReference Include="..\..\Common\Adapter\CommonAdapter.csproj">
       <Project>{3FD566BA-E398-461E-B1B6-464B117ED422}</Project>
@@ -83,6 +83,8 @@
     <Content Include="WindowsSutControlAdapter\MoveSmbWitnessClient.ps1" />
     <Content Include="WindowsSutControlAdapter\RefreshNetAdapter.ps1" />
     <Content Include="WindowsSutControlAdapter\MoveClusterResourceOwner.ps1" />
+    <Content Include="ShellSutControlAdapter\RestoreToInitialState.sh" />
+    <Content Include="ShellSutControlAdapter\TriggerFailover.sh" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\..\..\..\..\AssemblyInfo\SharedAssemblyInfo.cs">
@@ -90,6 +92,9 @@
     </Compile>
     <Compile Include="ISutControlAdapter.cs" />
     <Compile Include="ServerFailoverTestConfig.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="WindowsSutControlAdapter\FlushDNS.ps1" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <Target Name="AfterBuild">

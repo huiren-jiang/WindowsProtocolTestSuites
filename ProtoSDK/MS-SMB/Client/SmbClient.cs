@@ -7,9 +7,10 @@ using System.Net.Sockets;
 using System.Security.AccessControl;
 
 using Microsoft.Protocols.TestTools.StackSdk.Transport;
-using Microsoft.Protocols.TestTools.StackSdk.Security.Sspi;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
 using Microsoft.Protocols.TestTools.StackSdk.Security.Nlmp;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Cifs;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiService;
 
 namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
 {
@@ -1466,7 +1467,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
                 this.MessageId,
                 this.GetSessionIdByFileId(fileId), this.GetTreeIdByFileId(fileId),
                 this.capability.Flag, this.capability.Flags2,
-                fileId, transactOptions, this.capability.Timeout, this.capability.IsUsePathThrough,
+                fileId, transactOptions, this.capability.Timeout, this.capability.IsUsePassThrough,
                 maxDataCount, informationLevel, extendedAttributeList);
         }
 
@@ -1510,7 +1511,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
             return CreateTrans2QueryPathInformationRequest(this.MessageId,
                 this.GetSessionIdByTreeId(treeId), treeId,
                 this.capability.Flag, flags2, fileName,
-                transactOptions, this.capability.Timeout, this.capability.IsUsePathThrough,
+                transactOptions, this.capability.Timeout, this.capability.IsUsePassThrough,
                 informationLevel, maxDataCount);
         }
 
@@ -1544,7 +1545,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
                 this.MessageId,
                 this.GetSessionIdByFileId(fileId), this.GetTreeIdByFileId(fileId), this.capability.Flag,
                 this.capability.Flags2, fileId, transactOptions, this.capability.Timeout,
-                this.capability.IsUsePathThrough, informationLevel, data);
+                this.capability.IsUsePassThrough, informationLevel, data);
         }
 
 
@@ -1586,7 +1587,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
 
             return CreateTrans2SetPathInformationRequest(
                 this.MessageId, this.GetSessionIdByTreeId(treeId), treeId, this.capability.Flag,
-                flags2, fileName, this.capability.IsUsePathThrough, transactOptions, this.capability.Timeout, informationLevel, data);
+                flags2, fileName, this.capability.IsUsePassThrough, transactOptions, this.capability.Timeout, informationLevel, data);
         }
 
 
@@ -1620,7 +1621,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
         {
             return CreateTrans2QueryFileSystemInformationRequest(
                 this.MessageId, this.GetSessionIdByTreeId(treeId), treeId, this.capability.Flag,
-                this.capability.Flags2, this.capability.IsUsePathThrough,
+                this.capability.Flags2, this.capability.IsUsePassThrough,
                 maxDataCount, transactOptions, this.capability.Timeout, informationLevel);
         }
 
@@ -1654,7 +1655,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
                 this.MessageId,
                 this.GetSessionIdByFileId(fileId), this.GetTreeIdByFileId(fileId), this.capability.Flag,
                 this.capability.Flags2, fileId, transactOptions, this.capability.Timeout,
-                this.capability.IsUsePathThrough,
+                this.capability.IsUsePassThrough,
                 informationLevel, data);
         }
 
@@ -3592,7 +3593,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
         /// this to 0 to indicate that no time-out is given. If the operation does not complete within the specified  
         /// time, the server MAY abort the request and send a failure response. 
         /// </param>
-        /// <param name = "isUsePathThrough">
+        /// <param name = "isUsePassThrough">
         /// Indicates that the client is requesting a native Microsoft Windows NT operating system information level, 
         /// as specified in section 3.2.4.7 and in [MS-FSCC] section 2.4. 
         /// </param>
@@ -3616,13 +3617,13 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
             ushort fileId,
             Trans2SmbParametersFlags transactOptions,
             uint timeOut,
-            bool isUsePathThrough,
+            bool isUsePassThrough,
             ushort maxDataCount,
             QueryInformationLevel informationLevel,
             SMB_GEA[] extendedAttributeList)
         {
             // update information level
-            if (isUsePathThrough)
+            if (isUsePassThrough)
             {
                 informationLevel = (QueryInformationLevel)
                     (informationLevel + SmbCapability.CONST_SMB_INFO_PASSTHROUGH);
@@ -3664,7 +3665,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
         /// this to 0 to indicate that no time-out is given. If the operation does not complete within the specified  
         /// time, the server MAY abort the request and send a failure response. 
         /// </param>
-        /// <param name="isUsePathThrough">
+        /// <param name="isUsePassThrough">
         /// Indicates that the client is requesting a native Microsoft Windows庐 NT operating system information level, 
         /// as specified in section 3.2.4.7 and in [MS-FSCC] section 2.4. 
         /// </param>
@@ -3683,12 +3684,12 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
             string fileName,
             Trans2SmbParametersFlags transactOptions,
             uint timeOut,
-            bool isUsePathThrough,
+            bool isUsePassThrough,
             QueryInformationLevel informationLevel,
             ushort maxDataCount)
         {
             // update information level
-            if (isUsePathThrough)
+            if (isUsePassThrough)
             {
                 informationLevel = (QueryInformationLevel)
                     (informationLevel + SmbCapability.CONST_SMB_INFO_PASSTHROUGH);
@@ -3730,7 +3731,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
         /// this to 0 to indicate that no time-out is given. If the operation does not complete within the specified  
         /// time, the server MAY abort the request and send a failure response. 
         /// </param>
-        /// <param name = "isUsePathThrough">
+        /// <param name = "isUsePassThrough">
         /// Indicates that the client is requesting a native Microsoft Windows® NT operating system information level, 
         /// as specified in section 3.2.4.7 and in [MS-FSCC] section 2.4. 
         /// </param>
@@ -3749,11 +3750,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
             ushort fileId,
             Trans2SmbParametersFlags transactOptions,
             uint timeOut,
-            bool isUsePathThrough,
+            bool isUsePassThrough,
             SetInformationLevel informationLevel,
             byte[] data)
         {
-            if (isUsePathThrough)
+            if (isUsePassThrough)
             {
                 informationLevel = (SetInformationLevel)
                     (informationLevel + SmbCapability.CONST_SMB_INFO_PASSTHROUGH);
@@ -3789,7 +3790,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
         /// various client and server capabilities. 
         /// </param>
         /// <param name = "fileName">The name of path to set the information on server. </param>
-        /// <param name = "isUsePathThrough">
+        /// <param name = "isUsePassThrough">
         /// Indicates that the client is requesting a native Microsoft Windows® NT operating system information level, 
         /// as specified in section 3.2.4.7 and in [MS-FSCC] section 2.4. 
         /// </param>
@@ -3816,13 +3817,13 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
             SmbHeader_Flags_Values flags,
             SmbHeader_Flags2_Values flags2,
             string fileName,
-            bool isUsePathThrough,
+            bool isUsePassThrough,
             Trans2SmbParametersFlags transactOptions,
             uint timeOut,
             SetInformationLevel informationLevel,
             byte[] data)
         {
-            if (isUsePathThrough)
+            if (isUsePassThrough)
             {
                 informationLevel = (SetInformationLevel)
                     (informationLevel + SmbCapability.CONST_SMB_INFO_PASSTHROUGH);
@@ -3857,7 +3858,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
         /// The Flags2 field contains individual bit flags that, depending on the negotiated SMB dialect, indicate   
         /// various client and server capabilities. 
         /// </param>
-        /// <param name = "isUsePathThrough">
+        /// <param name = "isUsePassThrough">
         /// Indicates that the client is requesting a native Microsoft Windows® NT operating system information level, 
         /// as specified in section 3.2.4.7 and in [MS-FSCC] section 2.4. 
         /// </param>
@@ -3886,13 +3887,13 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
             ushort treeId,
             SmbHeader_Flags_Values flags,
             SmbHeader_Flags2_Values flags2,
-            bool isUsePathThrough,
+            bool isUsePassThrough,
             ushort maxDataCount,
             Trans2SmbParametersFlags transactOptions,
             uint timeOut,
             QueryFSInformationLevel informationLevel)
         {
-            if (isUsePathThrough)
+            if (isUsePassThrough)
             {
                 informationLevel = (QueryFSInformationLevel)
                     (informationLevel + SmbCapability.CONST_SMB_INFO_PASSTHROUGH);
@@ -3934,7 +3935,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
         /// this to 0 to indicate that no time-out is given. If the operation does not complete within the specified  
         /// time, the server MAY abort the request and send a failure response. 
         /// </param>
-        /// <param name = "isUsePathThrough">
+        /// <param name = "isUsePassThrough">
         /// Indicates that the client is requesting a native Microsoft Windows® NT operating system information level, 
         /// as specified in section 3.2.4.7 and in [MS-FSCC] section 2.4. 
         /// </param>
@@ -3953,11 +3954,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb
             ushort fileId,
             Trans2SmbParametersFlags transactOptions,
             uint timeOut,
-            bool isUsePathThrough,
+            bool isUsePassThrough,
             QueryFSInformationLevel informationLevel,
             byte[] data)
         {
-            if (isUsePathThrough)
+            if (isUsePassThrough)
             {
                 informationLevel = (QueryFSInformationLevel)
                     (informationLevel + SmbCapability.CONST_SMB_INFO_PASSTHROUGH);

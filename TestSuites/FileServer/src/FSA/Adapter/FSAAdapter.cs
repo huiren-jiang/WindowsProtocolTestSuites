@@ -20,6 +20,7 @@ using System.Security.Principal;
 using System.Text;
 using Smb2 = Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter;
 
 namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
 {
@@ -72,7 +73,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
         private IpVersion ipVersion;
         private ITestSite site;
         private ITransportAdapter transAdapter;
-        private UInt32 transBufferSize;
+        public UInt32 transBufferSize; // Make it accessible from test cases' code.
         private string rootDirectory;
         private string quotaFile;
         private string reparsePointFile;
@@ -80,6 +81,15 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
         private FileAccess gOpenGrantedAccess;
         private StreamType gStreamType;
         private List<string> activeTDIs;
+        public bool Is64bitFileIdSupported;
+        public bool IsChangeTimeSupported;
+        // Used to generate random file names.
+        private static Random randomRange = new Random();
+
+        // Used to clean up the generated test files.
+        protected ISutProtocolControlAdapter sutProtocolController;
+        protected List<string> testFiles = new List<string>();
+        protected List<string> testDirectories = new List<string>();
         # endregion
 
         #region Properties
@@ -88,8 +98,9 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             get { return testConfig; }
         }
 
-        public string FileName {
-            get { return fileName;  }
+        public string FileName
+        {
+            get { return fileName; }
         }
 
         public FileSystem FileSystem
@@ -225,6 +236,14 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             }
         }
 
+        protected string CurrentTestCaseName
+        {
+            get
+            {
+                string fullName = (string)Site.TestProperties["CurrentTestCaseName"];
+                return fullName.Split('.').LastOrDefault();
+            }
+        }
         #endregion
 
         #region Initialize
@@ -248,12 +267,13 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             this.ipVersion = testConfig.SutIPAddress.AddressFamily == AddressFamily.InterNetworkV6 ? IpVersion.Ipv6 : IpVersion.Ipv4;
 
             //Transport Configuration
+            Smb2.DialectRevision[] negotiateDialects = Smb2.Smb2Utility.GetDialects(testConfig.MaxSmbVersionSupported);
             this.transport = (Transport)Enum.Parse(typeof(Transport), testConfig.GetProperty("Transport"));
             #region Select transAdapter according to transport
             switch (this.transport)
             {
                 case Transport.SMB:
-                    this.transAdapter = new SmbTransportAdapter();
+                    this.transAdapter = new SmbTransportAdapter(testConfig);
                     break;
 
                 case Transport.SMB2:
@@ -261,7 +281,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
                     break;
 
                 case Transport.SMB3:
-                    this.transAdapter = new Smb2TransportAdapter(new Smb2.DialectRevision[] { Smb2.DialectRevision.Smb30, Smb2.DialectRevision.Smb302, Smb2.DialectRevision.Smb311 }, testConfig);
+                    this.transAdapter = new Smb2TransportAdapter(negotiateDialects, testConfig);
                     break;
 
                 default:
@@ -318,6 +338,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
 
             //Other Configurations
             this.transBufferSize = uint.Parse(testConfig.GetProperty("BufferSize"));
+            this.Is64bitFileIdSupported = bool.Parse(testConfig.GetProperty("Is64bitFileIdSupported"));
+            this.IsChangeTimeSupported = bool.Parse(testConfig.GetProperty("IsChangeTimeSupported"));
+
+            sutProtocolController = Site.GetAdapter<ISutProtocolControlAdapter>();
 
             this.Reset();
         }
@@ -340,6 +364,8 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             this.transAdapter.UserName = testConfig.UserName;
             this.transAdapter.Timeout = testConfig.Timeout;
             this.transAdapter.Reset();
+
+            CleanTestFiles();
         }
 
         /// <summary>
@@ -354,6 +380,60 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             {
                 transAdapter.Dispose();
                 this.transAdapter = null;
+            }
+
+            CleanTestFiles();
+        }
+
+        protected void CleanTestFiles()
+        {
+            foreach (var fileName in testFiles)
+            {
+                try
+                {
+                    // Remove the appendix. e.g. "::$DATA", ":$I30"
+                    int i = fileName.IndexOf(":");
+                    string temp = fileName;
+                    if (i != -1)
+                    {
+                        temp = fileName.Substring(0, i);
+                    }
+                    sutProtocolController.DeleteFile("\\\\" + testConfig.SutComputerName + "\\" + this.shareName, temp);
+                }
+                catch
+                {
+                }
+            }
+            testFiles.Clear();
+
+            foreach (var directory in testDirectories)
+            {
+                try
+                {
+                    int i = directory.IndexOf(":");
+                    string temp = directory;
+                    if (i != -1)
+                    {
+                        temp = directory.Substring(0, i);
+                    }
+                    sutProtocolController.DeleteDirectory("\\\\" + testConfig.SutComputerName + "\\" + this.shareName, temp);
+                }
+                catch
+                {
+                }
+            }
+            testDirectories.Clear();
+        }
+
+        protected void AddTestFileName(CreateOptions createOptions, string fileName)
+        {
+            if (createOptions.HasFlag(CreateOptions.DIRECTORY_FILE))
+            {
+                testDirectories.Add(fileName);
+            }
+            else
+            {
+                testFiles.Add(fileName);
             }
         }
 
@@ -426,6 +506,11 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             else if (symbolicLinkType == SymbolicLinkType.IsSymbolicLink)
             {
                 randomFile = testConfig.GetProperty("SymbolicLinkFile");
+
+                if (this.FileSystem == FileSystem.FAT32)
+                {
+                    site.Assume.Inconclusive("Symbolic Link is not supported by FAT32 system.");
+                }
             }
 
             //Retrieve the existing the folder
@@ -800,6 +885,47 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
         }
 
         /// <summary>
+        /// Basic CreateFile method
+        /// </summary>
+        /// <param name="fileName">The file name</param>
+        /// <param name="desiredFileAttribute">Desired File Attribute</param>
+        /// <param name="createOption">Specifies the options to be applied when creating or opening the file.</param>
+        /// <param name="desiredAccess">Desired Access to the file.</param>
+        /// <param name="shareAccess">Share Access to the file.</param>
+        /// <param name="createDisposition">The desired disposition for the open.</param>
+        /// <param name="fileId">The fileId for the open.</param>
+        /// <param name="treeId">The treeId for the open.</param>
+        /// <param name="sessionId">The sessionId for the open.</param>
+        /// <returns>An NTSTATUS code that specifies the result.</returns>
+        public MessageStatus CreateFile(
+            string fileName,
+            FileAttribute desiredFileAttribute,
+            CreateOptions createOption,
+            FileAccess desiredAccess,
+            ShareAccess shareAccess,
+            CreateDisposition createDisposition,
+            out Smb2.FILEID fileId,
+            out uint treeId,
+            out ulong sessionId
+             )
+        {
+            uint createAction = 0;
+
+            return transAdapter.CreateFile(
+                fileName,
+                (uint)desiredFileAttribute,
+                (uint)desiredAccess,
+                (uint)shareAccess,
+                (uint)createOption,
+                (uint)createDisposition,
+                out createAction,
+                out fileId,
+                out treeId,
+                out sessionId
+                );
+        }
+
+        /// <summary>
         /// Create or open a DataFile or DirectoryFile.
         /// </summary>
         /// <param name="fileType">An Open of a DataFile or DirectoryFile.</param>
@@ -852,6 +978,125 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             }
             return returnedStatus;
         }
+
+        /// </summary>
+        /// <param name="searchPattern">A Unicode string containing the file name pattern to match. </param>
+        /// <param name="fileInfoClass">The FileInfoClass to query. </param>
+        /// <param name="returnSingleEntry">A boolean indicating whether the return single entry for query.</param>
+        /// <param name="restartScan">A boolean indicating whether the enumeration should be restarted.</param>
+        /// <param name="isOutPutBufferNotEnough">True: if OutputBufferSize is less than the size needed to return a single entry</param>
+        /// of section 3.1.5.5.4</param>
+        /// <returns>An NTSTATUS code that specifies the result</returns>
+        public MessageStatus QueryDirectoryInfo(
+            string searchPattern,
+            FileInfoClass fileInfoClass,
+            bool returnSingleEntry,
+            bool restartScan,
+            bool isOutPutBufferNotEnough
+            )
+        {
+
+            byte[] outBuffer = null;
+
+            uint fileIndex = 0;
+            uint maxOutputSize = (uint)(isOutPutBufferNotEnough ? 1 : this.transBufferSize);
+
+            MessageStatus returnedStatus = this.transAdapter.QueryDirectory(
+                (byte)fileInfoClass,
+                maxOutputSize,
+                restartScan,
+                returnSingleEntry,
+                fileIndex,
+                searchPattern,
+                out outBuffer
+                );
+
+            return returnedStatus;
+        }
+        /// <summary>
+        /// Query directory information and return query status
+        /// </summary>
+        /// <param name="fileId">The fileID of the directory</param>
+        /// <param name="treeId">The fileID of the directory</param>
+        /// <param name="sessionId">The fileID of the directory</param>s  
+        /// <param name="searchPattern">A Unicode string containing the file name pattern to match. </param>
+        /// <param name="fileInfoClass">The FileInfoClass to query. </param>
+        /// <param name="returnSingleEntry">A boolean indicating whether the return single entry for query.</param>
+        /// <param name="restartScan">A boolean indicating whether the enumeration should be restarted.</param>
+        /// <param name="isOutPutBufferNotEnough">True: if OutputBufferSize is less than the size needed to return a single entry</param>     
+        /// of section 3.1.5.5.4</param>
+        /// <returns>An NTSTATUS code that specifies the result</returns>
+        public MessageStatus QueryDirectoryInfo(
+            Smb2.FILEID fileId,
+            uint treeId,
+            ulong sessionId,
+            string searchPattern,
+            FileInfoClass fileInfoClass,
+            bool returnSingleEntry,
+            bool restartScan,
+            bool isOutPutBufferNotEnough
+           )
+        {
+
+            byte[] outBuffer = null;
+
+            uint fileIndex = 0;
+            uint maxOutputSize = (uint)(isOutPutBufferNotEnough ? 1 : this.transBufferSize);
+
+            MessageStatus returnedStatus = this.transAdapter.QueryDirectory(
+                fileId,
+                treeId,
+                sessionId,
+                (byte)fileInfoClass,
+                maxOutputSize,
+                restartScan,
+                returnSingleEntry,
+                fileIndex,
+                searchPattern,
+                out outBuffer
+                );
+
+            return returnedStatus;
+        }
+
+        /// </summary>
+        /// Query directory with outputBuffer returned.
+        /// <param name="searchPattern">A Unicode string containing the file name pattern to match. </param>
+        /// <param name="fileInfoClass">The FileInfoClass to query. </param>
+        /// <param name="returnSingleEntry">A boolean indicating whether the return single entry for query.</param>
+        /// <param name="restartScan">A boolean indicating whether the enumeration should be restarted.</param>
+        /// <param name="outputBuffer"> The buffer containing the directory enumeration being returned in the response</param>
+        /// of section 3.1.5.5.4</param>
+        /// <returns>An NTSTATUS code that specifies the result</returns>
+        public MessageStatus QueryDirectory(
+            Smb2.FILEID fileId,
+            uint treeId,
+            ulong sessionId,
+            string searchPattern,
+            FileInfoClass fileInfoClass,
+            bool returnSingleEntry,
+            bool restartScan,
+            out byte[] outputBuffer
+            )
+        {
+            uint fileIndex = 0;
+
+            MessageStatus returnedStatus = this.transAdapter.QueryDirectory(
+                fileId,
+                treeId,
+                sessionId,
+                (byte)fileInfoClass,
+                this.transBufferSize,
+                restartScan,
+                returnSingleEntry,
+                fileIndex,
+                searchPattern,
+                out outputBuffer
+                );
+
+            return returnedStatus;
+        }
+
         #endregion
 
         #region 3.1.5.1.2   Open of an Existing File
@@ -1153,7 +1398,6 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
         #endregion
 
         #region 3.1.5.2   Server Requests a Read
-
         /// <summary>
         /// Implement ReadFile method
         /// </summary>
@@ -1166,7 +1410,25 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             int byteCount,
             out long byteRead)
         {
-            byte[] outBuffer = null;
+            byte[] outBuffer;
+            return ReadFile(byteOffset, byteCount, out byteRead, out outBuffer);
+        }
+
+        /// <summary>
+        /// Implement ReadFile method
+        /// </summary>
+        /// <param name="byteOffset">The absolute byte offset in the stream from which to read data.</param>
+        /// <param name="byteCount">The desired number of bytes to read.</param>
+        /// <param name="byteRead">The number of bytes that were read.</param>
+        /// <param name="buffer">The buffer which contains file content read out.</param>
+        /// <returns>An NTSTATUS code that specifies the result</returns>
+        public MessageStatus ReadFile(
+            long byteOffset,
+            int byteCount,
+            out long byteRead,
+            out byte[] buffer
+            )
+        {
             MessageStatus returnedStatus = MessageStatus.INVALID_PARAMETER;
 
             try
@@ -1175,21 +1437,22 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
                     (ulong)byteOffset,
                     (uint)byteCount,
                     true,
-                    out outBuffer);
+                    out buffer);
 
                 if (returnedStatus == MessageStatus.SUCCESS)
                 {
-                    bool isReturned = (outBuffer != null);
+                    bool isReturned = (buffer != null);
                     this.VerifyServerRequestsRead(isReturned);
                 }
             }
             catch (Exception ex)
             {
+                buffer = new byte[0];
                 site.Log.Add(LogEntryKind.Debug, "Read file get exception: " + ex.Message);
             }
 
             //When outBuffer is null, byteRead is 0
-            byteRead = ((outBuffer == null) ? 0 : outBuffer.Length);
+            byteRead = ((buffer == null) ? 0 : buffer.Length);
 
             if (this.transport == Transport.SMB2 || this.transport == Transport.SMB3)
             {
@@ -1231,8 +1494,8 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             MessageStatus returnedStatus = this.transAdapter.Write(
                 bufferData,
                 (ulong)byteOffset,
-                true,
-                true,
+                false,
+                false,
                 out outLength);
 
             bytesWritten = (long)outLength;
@@ -1253,6 +1516,29 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
                     bytesWritten = 0;
                 }
             }
+            return returnedStatus;
+        }
+
+        public MessageStatus WriteFile(
+            long byteOffset,
+            long byteCount,
+            bool isWriteThrough,
+            bool isUnBuffered)
+        {
+            byte[] bufferData = new byte[0];
+            if (byteCount > 0)
+            {
+                bufferData = new byte[byteCount];
+            }
+            RandomNumberGenerator ran = RandomNumberGenerator.Create();
+            ran.GetBytes(bufferData);
+            ulong outLength = 0;
+            MessageStatus returnedStatus = this.transAdapter.Write(
+                bufferData,
+                (ulong)byteOffset,
+                isWriteThrough,
+                isUnBuffered,
+                out outLength);
             return returnedStatus;
         }
         #endregion
@@ -1296,7 +1582,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             bool returnSingleEntry = true;
             byte[] outBuffer = null;
             string randomFile = null;
-            string ramdomFileName = this.ComposeRandomFileName();
+            string randomFileName = this.ComposeRandomFileName();
             uint createAction = 0;
             uint fileIndex = 0;
             uint maxOutputSize = (uint)(isOutPutBufferNotEnough ? 1 : this.transBufferSize);
@@ -1305,10 +1591,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             {
                 case FileNamePattern.LengthIsNotAMultipleOf4:
                     //Extend file name and make its length not multiple of 4.
-                    if ((ramdomFileName.Length % 4) == 0)
+                    if ((randomFileName.Length % 4) == 0)
                     {
                         randomFile += "0";
-                        ramdomFileName += "0";
+                        randomFileName += "0";
                     }
                     break;
 
@@ -1322,12 +1608,12 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
                     break;
 
                 default:
-                    randomFile = ramdomFileName;
+                    randomFile = randomFileName;
                     break;
             }
 
             MessageStatus returnedStatus = this.transAdapter.CreateFile(
-                ramdomFileName,
+                randomFileName,
                 (uint)FileAttribute.NORMAL,
                 (uint)(FileAccess.GENERIC_READ | FileAccess.GENERIC_WRITE),
                 (uint)(ShareAccess.FILE_SHARE_READ | ShareAccess.FILE_SHARE_WRITE),
@@ -1353,7 +1639,50 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
 
             return returnedStatus;
         }
-        #endregion
+
+        /// <summary>
+        /// Implement QueryFileObjectIdInfo method
+        /// </summary>
+        /// <param name="fileNamePattern"> A Unicode string containing the file name pattern to match. </param>
+        /// <param name="queryDirectoryScanType">Indicate whether the enumeration should be restarted.</param>
+        /// <param name="queryDirectoryFileNameMatchType">The object store MUST search the volume for Files having File.ObjectId matching FileNamePattern.
+        /// This parameter indicates if matches the file by FileNamePattern.</param>
+        /// <param name="queryDirectoryOutputBufferType">Indicate if OutputBuffer is large enough to hold the first matching entry.</param>
+        /// <returns>An NTSTATUS code that specifies the result</returns>
+        public MessageStatus QueryFileObjectIdInfo(
+            string fileName,
+            Smb2.FILEID fileId,
+            uint treeId,
+            ulong sessionId,
+            QueryDirectoryScanType queryDirectoryScanType,
+            QueryDirectoryFileNameMatchType queryDirectoryFileNameMatchType,
+            QueryDirectoryOutputBufferType queryDirectoryOutputBufferType)
+        {
+            bool restartScan = (queryDirectoryScanType == QueryDirectoryScanType.RestartScan);
+            bool isDirectoryNotRight = (queryDirectoryFileNameMatchType == QueryDirectoryFileNameMatchType.FileNamePatternNotMatched);
+            bool isOutPutBufferNotEnough = (queryDirectoryOutputBufferType == QueryDirectoryOutputBufferType.OutputBufferIsNotEnough);
+            bool returnSingleEntry = true;
+            byte[] outBuffer = null;
+            string randomFile = null;
+            string randomFileName = this.ComposeRandomFileName();
+            uint fileIndex = 0;
+            uint maxOutputSize = (uint)(isOutPutBufferNotEnough ? 1 : this.transBufferSize);
+
+            MessageStatus returnedStatus = this.transAdapter.QueryDirectory(
+                fileId,
+                treeId,
+                sessionId,
+                (byte) FileInfoClass.FILE_OBJECTID_INFORMATION,
+                maxOutputSize,
+                restartScan,
+                returnSingleEntry,
+                fileIndex,
+                randomFile,
+                out outBuffer);
+
+            return returnedStatus;
+        }
+    #endregion
 
         #region 3.1.5.5.2   FileReparsePointInformation
 
@@ -1515,7 +1844,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
                         break;
 
                     case OutBufferSmall.FileFullDirectoryInformation:
-                        fileInfoClass = FileInfoClass.FILE_FULL_DIR_INFORMATIO;
+                        fileInfoClass = FileInfoClass.FILE_FULL_DIR_INFORMATION;
                         break;
 
                     case OutBufferSmall.FileIdBothDirectoryInformation:
@@ -2236,6 +2565,17 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             return returnedStatus;
         }
 
+        public MessageStatus FsCtlForEasyRequest(FsControlCommand ctlCode, out byte[] outputBuffer)
+        {
+            MessageStatus status = this.transAdapter.IOControl(
+                (uint)ctlCode,
+                transBufferSize,
+                null,
+                out outputBuffer);
+
+            return status;
+        }
+
         #endregion
 
         #region 3.1.5.9.11   FSCTL_GET_REPARSE_POINT
@@ -2682,7 +3022,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
 
         #endregion
 
-        #region 3.1.5.9.22   FSCTL_READ_FILE_USN_DATA
+        #region 2.1.5.9.24   FSCTL_READ_FILE_USN_DATA
 
         /// <summary>
         /// Implement FsCtlReadFileUSNData method
@@ -2698,7 +3038,6 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             bool isImplemented = false;
             byte[] outbuffer = new byte[0];
             UInt32 outBufferSize = this.transBufferSize;
-            FsccFsctlReadFileUsnDataRequestPacket fsccPacket = new FsccFsctlReadFileUsnDataRequestPacket();
 
             // According to different condition, set the buffer size value 
             switch (bufferSize)
@@ -2721,9 +3060,9 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
 
             // The control code must be set to 0x900eb, according to FSCC 2.3
             MessageStatus returnedStatus = transAdapter.IOControl(
-                0x900eb,
+                (uint)FsControlCommand.FSCTL_READ_FILE_USN_DATA,
                 outBufferSize,
-                fsccPacket.ToBytes(),
+                null,
                 out outbuffer);
 
             if (MessageStatus.SUCCESS == returnedStatus)
@@ -2750,6 +3089,25 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             {
                 returnedStatus = SMB_TDIWorkaround.WorkAroundFsCtlReadFileUSNData(bufferSize, returnedStatus, site);
             }
+            return returnedStatus;
+        }
+
+
+        public MessageStatus FsCtlReadFileUSNData(ushort minMajorVersion, ushort maxMajorVersion, out byte[] outbuffer)
+        {
+            FsccFsctlReadFileUsnDataRequestPacket fsccPacket = new FsccFsctlReadFileUsnDataRequestPacket();
+            READ_FILE_USN_DATA readFileUSNDataRequestPayload = new READ_FILE_USN_DATA();
+            readFileUSNDataRequestPayload.MinMajorVersion = minMajorVersion;
+            readFileUSNDataRequestPayload.MaxMajorVersion = maxMajorVersion;
+
+            fsccPacket.Payload = readFileUSNDataRequestPayload;
+
+            MessageStatus returnedStatus = this.transAdapter.IOControl(
+                (uint)FsControlCommand.FSCTL_READ_FILE_USN_DATA,
+                transBufferSize,
+                fsccPacket.ToBytes(),
+                out outbuffer);
+
             return returnedStatus;
         }
         #endregion
@@ -3405,6 +3763,78 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             return returnedStatus;
         }
 
+        #endregion
+
+        #region FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX
+        /// <summary>
+        /// Implement FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX, which duplicates file extents from the same opened file.
+        /// </summary>
+        /// <param name="sourceFileOffset">Offset of source file.</param>
+        /// <param name="targetFileOffset">Offset of target file.</param>
+        /// <param name="byteCount">The number of bytes of duplicate.</param>
+        /// <param name="flags">Flags for duplicate file.</param>
+        /// <returns></returns>
+        public MessageStatus FsctlDuplicateExtentsToFileEx(
+            long sourceFileOffset,
+            long targetFileOffset,
+            long byteCount,
+            Smb2.FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX_Request_Flags_Values flags
+            )
+        {
+            if (!(transAdapter is Smb2TransportAdapter))
+            {
+                Site.Assume.Inconclusive("FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX is only supported by SMB2 transport!");
+            }
+
+            var sourceFileId = (transAdapter as Smb2TransportAdapter).FileId;
+
+            var request = new Smb2.FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX_Request();
+
+            request.StructureSize = 0x30;
+            request.SourceFileId = sourceFileId;
+            request.SourceFileOffset = sourceFileOffset;
+            request.TargetFileOffset = targetFileOffset;
+            request.ByteCount = byteCount;
+            request.Flags = flags;
+            request.Reserved = 0;
+
+            var input = TypeMarshal.ToBytes(request);
+            byte[] output;
+
+            var status = transAdapter.IOControl(
+                (uint)Smb2.CtlCode_Values.FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX,
+                0,
+                input,
+                out output
+                );
+
+            return status;
+        }
+        #endregion
+
+        #region 2.1.5.9.21 FSCTL_QUERY_FILE_REGIONS 
+        public MessageStatus FsctlQueryFileRegionsWithInputData(
+            long fileOffset,
+            long length,
+            FILE_REGION_USAGE desiredUsage,
+            out byte[] output)
+        {
+            byte[] input = null;
+            var request = new FILE_REGION_INPUT();
+            request.FileOffset = fileOffset;
+            request.Length = length;
+            request.DesiredUsage = desiredUsage;
+            input = TypeMarshal.ToBytes(request);
+
+            var status = transAdapter.IOControl(
+                (uint)FsControlCommand.FSCTL_QUERY_FILE_REGIONS,
+                transBufferSize,
+                input,
+                out output
+                );
+
+            return status;
+        }
         #endregion
 
         #endregion
@@ -4325,6 +4755,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
                 fileLinkInformation.Reserved = new byte[7];
             }
             byte[] inputBuffer = TypeMarshal.ToBytes<FILE_LINK_INFORMATION_TYPE_SMB2>(fileLinkInformation);
+
             return SetFileInformation(FileInfoClass.FILE_LINK_INFORMATION, inputBuffer);
         }
 
@@ -5117,9 +5548,9 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
         #region Utility methods
 
         /// <summary>
-        /// Create a random file name including 8 letters
+        /// Create a random file name a random string of 8 letters.
         /// </summary>
-        /// <returns>String concluding 8 randomized letters</returns>
+        /// <returns>>A file name with a random string of 8 letters.</returns>
         protected string ComposeRandomFileName()
         {
             return ComposeRandomFileName(8);
@@ -5129,33 +5560,35 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
         /// Create a random file name
         /// </summary>
         /// <param name="fileNameLength">The length of the file name.</param>
-        /// <returns>A random string file name with given length.</returns>
-        public string ComposeRandomFileName(int fileNameLength)
+        /// <param name="extension">File extension to apend to the end of the filename.</param>
+        /// <param name="opt">Directory will be added to test directory list, else, will be added to test file list for cleanup</param>
+        /// <param name="addtoList">True for add to the testfiles.</param>        /// 
+        /// <returns>A file name with a random string of the given length.</returns>
+        public string ComposeRandomFileName(int fileNameLength,  string extension = "", CreateOptions opt = CreateOptions.DIRECTORY_FILE,  bool addToList = true)
         {
             int randomNumber = 0;
             char fileNameLetter = ' ';
-            string ramdomFileName = null;
-            Random randomRange = new Random((int)System.DateTime.Now.Ticks);
+            string randomFileName = null;
 
             for (int i = 0; i < fileNameLength; i++)
             {
                 //Create a random fileNameLetter from 'a' to 'z'by range 1 to 52
-                randomNumber = randomRange.Next(1, 52);
-                if (randomNumber > 26)
+                lock (randomRange)
                 {
-                    //Convert to char type
-                    fileNameLetter = (char)(97 + randomNumber % 26);
+                    randomNumber = randomRange.Next(1, 52);
                 }
-                else
-                {
-                    fileNameLetter = (char)(97 + randomNumber % 26);
-                }
-                ramdomFileName = ramdomFileName + fileNameLetter.ToString(); ;
+                fileNameLetter = (char)(97 + randomNumber % 26);
+                randomFileName = randomFileName + fileNameLetter.ToString() ; ;
             }
 
-            return ramdomFileName;
-        }
-
+            randomFileName = randomFileName + extension;
+                
+            if (addToList)
+            {
+                AddTestFileName(opt, randomFileName);
+            }
+            return randomFileName;
+        }       
         /// <summary>
         /// Get SUT platformType.
         /// </summary>

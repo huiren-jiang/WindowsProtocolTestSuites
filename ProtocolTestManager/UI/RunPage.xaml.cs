@@ -18,6 +18,8 @@ using System.IO;
 using System.Threading;
 using Microsoft.Protocols.TestManager.Kernel;
 using System.ComponentModel;
+using System.Linq;
+
 namespace Microsoft.Protocols.TestManager.UI
 {
     /// <summary>
@@ -72,7 +74,7 @@ namespace Microsoft.Protocols.TestManager.UI
                 var header = new StackPanel()
                 {
                     Orientation = Orientation.Horizontal,
-                    Children = { 
+                    Children = {
                         headerCheckbox,
                         headerLabel
                     }
@@ -99,6 +101,8 @@ namespace Microsoft.Protocols.TestManager.UI
                 };
                 i.PropertyChanged += (s, arg) =>
                 {
+                    UpdateRunSelectedText(groups);
+
                     if (arg.PropertyName == "Visibility")
                     {
                         var dispatcher = item.Dispatcher;
@@ -133,7 +137,7 @@ namespace Microsoft.Protocols.TestManager.UI
                         var dispatcher = headerCheckbox.Dispatcher;
                         if (dispatcher.CheckAccess())
                         {
-                             headerLabel.Content = i.HeaderText;
+                            headerLabel.Content = i.HeaderText;
                         }
                         else
                         {
@@ -159,6 +163,7 @@ namespace Microsoft.Protocols.TestManager.UI
                 };
                 TestOutcome.Items.Add(item);
             }
+            UpdateRunSelectedText(groups);
         }
 
         private void ScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -234,11 +239,6 @@ namespace Microsoft.Protocols.TestManager.UI
                 logview.SelectTestCase(selectedTestCase);
             else
                 logview.IsCurrent = true;
-        }
-
-        private void Inprogress_GotFocus(object sender, RoutedEventArgs e)
-        {
-            logview.IsCurrent = true;
         }
 
         private void UncheckAll_Click(object sender, RoutedEventArgs e)
@@ -341,12 +341,8 @@ namespace Microsoft.Protocols.TestManager.UI
             }
             catch (Exception exception)
             {
-                MessageBox.Show(
-                    exception.Message,
-                    "Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error,
-                    MessageBoxResult.None);
+                UserPromptWindow.Show(StringResources.Error, exception.Message, UserPromptWindow.IconType.Error);
+
                 return;
             }
         }
@@ -364,12 +360,8 @@ namespace Microsoft.Protocols.TestManager.UI
             }
             catch (Exception exception)
             {
-                MessageBox.Show(
-                    exception.Message,
-                    "Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error,
-                    MessageBoxResult.None);
+                UserPromptWindow.Show(StringResources.Error, exception.Message, UserPromptWindow.IconType.Error);
+
                 return;
             }
         }
@@ -385,17 +377,16 @@ namespace Microsoft.Protocols.TestManager.UI
                     int checkedNumber, notFound;
                     Pages.util.ImportPlaylist(openfile.FileName);
                     Pages.util.ApplyPlaylist(out checkedNumber, out notFound);
-                    if (notFound > 0) MessageBox.Show(string.Format(StringResources.NotFoundCaseMessage, notFound));
+                    if (notFound > 0)
+                    {
+                        UserPromptWindow.Show(StringResources.Error, string.Format(StringResources.NotFoundCaseMessage, notFound), UserPromptWindow.IconType.Error);
+                    }
                 }
             }
             catch (Exception exception)
             {
-                MessageBox.Show(
-                    exception.Message,
-                    "Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error,
-                    MessageBoxResult.None);
+                UserPromptWindow.Show(StringResources.Error, exception.Message, UserPromptWindow.IconType.Error);
+
                 return;
             }
         }
@@ -413,21 +404,17 @@ namespace Microsoft.Protocols.TestManager.UI
             }
             catch (Exception exception)
             {
-                MessageBox.Show(
-                    exception.Message,
-                    "Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error,
-                    MessageBoxResult.None);
+                UserPromptWindow.Show(StringResources.Error, exception.Message, UserPromptWindow.IconType.Error);
+
                 return;
             }
         }
 
-        private void GenerateTextReport_Click(object sender, RoutedEventArgs e)
+        private void GenerateTestReport_Click(object sender, RoutedEventArgs e)
         {
-            TextReportWindow textReport = new TextReportWindow();
-            textReport.Owner = Pages.mainWindow;
-            textReport.ShowDialog();
+            TestReportWindow testReport = new TestReportWindow();
+            testReport.Owner = Pages.mainWindow;
+            testReport.ShowDialog();
         }
 
         private void AbortExecution_Click(object sender, RoutedEventArgs e)
@@ -463,6 +450,41 @@ namespace Microsoft.Protocols.TestManager.UI
                     }
                 }
                 checkbox.IsChecked = !(checkbox.IsChecked == true);
+            }
+        }
+
+        private void UpdateRunSelectedText(List<TestCaseGroup> groups)
+        {
+            var selectedCaseCount = groups
+                .SelectMany(g => g.TestCaseList)
+                .Where(c => c.IsChecked)
+                .GroupBy(c => c.FullName)
+                .Count();
+
+            string text = selectedCaseCount == 0 ? "Run Selected Cases" : $"Run Selected Cases ({selectedCaseCount})";
+
+            var dispatcher = RunSelectedLinkText.Dispatcher;
+            if (dispatcher.CheckAccess())
+            {
+                RunSelectedLinkText.Text = text;
+            }
+            else
+            {
+                RunSelectedLinkText.Dispatcher.Invoke(
+                    new Action(() => RunSelectedLinkText.Text = text)
+                );
+            }
+
+            dispatcher = RunSelectedMenuItem.Dispatcher;
+            if (dispatcher.CheckAccess())
+            {
+                RunSelectedMenuItem.Header = text;
+            }
+            else
+            {
+                RunSelectedLinkText.Dispatcher.Invoke(
+                    new Action(() => RunSelectedMenuItem.Header = text)
+                );
             }
         }
     }
@@ -515,7 +537,12 @@ namespace Microsoft.Protocols.TestManager.UI
         }
         private void SelectedCaseChanged()
         {
-            Pages.RunPage.WebBrowserLog.Url = testcase.LogUri;
+            // testcase could be null because logger.RunningTestCase could be null.
+            // So add check here to avoid null reference exception.
+            if (testcase != null)
+            {
+                Pages.RunPage.WebBrowserLog.Url = testcase.LogUri;
+            }
         }
 
     }

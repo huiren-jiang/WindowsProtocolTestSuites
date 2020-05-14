@@ -1,25 +1,21 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-using System;
-using System.IO;
-using System.Text;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Collections.ObjectModel;
-
-using Microsoft.Protocols.TestTools;
-using Microsoft.Protocols.TestTools.StackSdk;
-
 using Microsoft.Protocols.TestTools.StackSdk.Asn1;
 using Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr.Gcc;
 using Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr.Mcs;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 
 namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 {
     /// <summary>
     /// MS-RDPBCGR Decoder Class
     /// </summary>
-    internal class RdpbcgrDecoder
+    public class RdpbcgrDecoder
     {
         #region Private Class Members
         /// <summary>
@@ -62,7 +58,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="startIndex">start index</param>
         /// <param name="bytesToRead">specified length</param>
         /// <returns>bytes of specified length</returns>
-        private byte[] GetBytes(byte[] data, ref int startIndex, int bytesToRead)
+        private static byte[] GetBytes(byte[] data, ref int startIndex, int bytesToRead)
         {
             // if input data is null
             if (null == data)
@@ -440,7 +436,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="index">parser index</param>
         /// <param name="isBigEndian">big endian format flag</param>
         /// <returns>parsed UInt16 number</returns>
-        private UInt16 ParseUInt16(byte[] data, ref int index, bool isBigEndian)
+        private static UInt16 ParseUInt16(byte[] data, ref int index, bool isBigEndian)
         {
             // Read 2 bytes
             byte[] bytes = GetBytes(data, ref index, sizeof(UInt16));
@@ -464,7 +460,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="index">parser index</param>
         /// <param name="isBigEndian">big endian format flag</param>
         /// <returns>parsed UInt32 number</returns>
-        private UInt32 ParseUInt32(byte[] data, ref int index, bool isBigEndian)
+        public static UInt32 ParseUInt32(byte[] data, ref int index, bool isBigEndian)
         {
             // Read 4 bytes
             byte[] bytes = GetBytes(data, ref index, sizeof(UInt32));
@@ -899,7 +895,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             rdpNegRsp.flags = (RDP_NEG_RSP_flags_Values)ParseByte(data, ref currentIndex);
 
             // RDP_NEG_RSP: length
-            rdpNegRsp.length = (RDP_NEG_RSP_length_Values)ParseUInt16(data, ref currentIndex, false);
+            rdpNegRsp.length = ParseUInt16(data, ref currentIndex, false);
 
             // RDP_NEG_RSP: selectedProtocol
             rdpNegRsp.selectedProtocol = (selectedProtocols_Values)ParseUInt32(data, ref currentIndex, false);
@@ -926,7 +922,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             rdpNegFailure.flags = (RDP_NEG_FAILURE_flags_Values)ParseByte(data, ref currentIndex);
 
             // RDP_NEG_FAILURE: length
-            rdpNegFailure.length = (RDP_NEG_FAILURE_length_Values)ParseUInt16(data, ref currentIndex, false);
+            rdpNegFailure.length = ParseUInt16(data, ref currentIndex, false);
 
             // RDP_NEG_FAILURE: failureCode 
             rdpNegFailure.failureCode = (failureCode_Values)ParseUInt32(data, ref currentIndex, false);
@@ -1047,24 +1043,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 secData.serverRandom = GetBytes(data, ref currentIndex, (int)secData.serverRandomLen.actualData);
 
                 // TS_UD_SC_SEC1: serverCertificate (present)
-                secData.serverCertificate = new SERVER_CERTIFICATE();
-
-                // TS_UD_SC_SEC1: serverCertificate: dwVersion
-                secData.serverCertificate.dwVersion =
-                    (SERVER_CERTIFICATE_dwVersion_Values)ParseUInt32(data, ref currentIndex, false);
-
-                // TS_UD_SC_SEC1: serverCertificate: certData
-                if (SERVER_CERTIFICATE_dwVersion_Values.CERT_CHAIN_VERSION_1 == secData.serverCertificate.dwVersion)
-                {
-                    // proprietary server certificate
-                    secData.serverCertificate.certData = ParseProprietaryServerCertificate(data, ref currentIndex);
-                }
-                else
-                {
-                    // X509 certificate chain
-                    secData.serverCertificate.certData =
-                        ParseX509CertificateChain(data, ref currentIndex, (dataEndIndex - currentIndex));
-                }
+                secData.serverCertificate = DecodeServerCertificate(data, ref currentIndex, secData.serverCertLen.actualData);
             }
             else
             {
@@ -1126,7 +1105,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="data">data to be parsed</param>
         /// <param name="currentIndex">current parser index</param>
         /// <returns>PROPRIETARYSERVERCERTIFICATE</returns>
-        private PROPRIETARYSERVERCERTIFICATE ParseProprietaryServerCertificate(byte[] data, ref int currentIndex)
+        public static PROPRIETARYSERVERCERTIFICATE ParseProprietaryServerCertificate(byte[] data, ref int currentIndex)
         {
             PROPRIETARYSERVERCERTIFICATE cert = new PROPRIETARYSERVERCERTIFICATE();
 
@@ -1165,11 +1144,12 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="currentIndex">current parser index</param>
         /// <param name="size">cert data size</param>
         /// <returns>X509 Certificate Chain</returns>
-        private X509_CERTIFICATE_CHAIN ParseX509CertificateChain(byte[] data, ref int currentIndex, int size)
+        public static X509_CERTIFICATE_CHAIN ParseX509CertificateChain(byte[] data, ref int currentIndex, int size)
         {
             X509_CERTIFICATE_CHAIN cert = new X509_CERTIFICATE_CHAIN();
 
             cert.NumCertBlobs = (int)ParseUInt32(data, ref currentIndex, false);
+            cert.CertBlobArray = new CERT_BLOB[cert.NumCertBlobs];
             for (int i = 0; i < cert.CertBlobArray.Length; i++)
             {
                 cert.CertBlobArray[i].cbCert = (int)ParseUInt32(data, ref currentIndex, false);
@@ -1187,7 +1167,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="data">data to be parsed</param>
         /// <param name="currentIndex">current parser index</param>
         /// <returns>RSA_PUBLIC_KEY</returns>
-        private RSA_PUBLIC_KEY ParseRsaPublicKey(byte[] data, ref int currentIndex)
+        private static RSA_PUBLIC_KEY ParseRsaPublicKey(byte[] data, ref int currentIndex)
         {
             RSA_PUBLIC_KEY key = new RSA_PUBLIC_KEY();
 
@@ -1211,6 +1191,104 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
             return key;
         }
+
+        private static void DecodeX509RSAPublicKey(byte[] publicKey, out byte[] modulus, out byte[] publicExponent)
+        {
+            // An RSA public key should be represented with the ASN.1 type RSAPublicKey:
+            //    RSAPublicKey::= SEQUENCE {
+            //        modulus         INTEGER,  --n
+            //        publicExponent  INTEGER   --e
+            //    }
+
+            if (publicKey == null)
+            {
+                throw new Exception("publicKey should not be null!");
+            }
+
+            // 0x30 stands for "SEQUENCE", 0x02 stands for "INTEGER". publicKey[1] is the size of the SEQUENCE which we don't care.
+            if (publicKey[0] != 0x30 || publicKey[2] != 0x02)
+            {
+                throw new Exception("Invalid publicKey!");
+            }
+
+            int modulusLength = publicKey[3]; // publicKey[3] 
+            modulus = new byte[modulusLength];
+            Buffer.BlockCopy(publicKey, 4, modulus, 0, modulusLength);
+
+            // 0x02 stands for "INTEGER"
+            if (publicKey[4 + modulusLength] != 0x02)
+            {
+                throw new Exception("Invalid publicKey!");
+            }
+
+            int publicExponentLength = publicKey[5 + modulusLength];
+            publicExponent = new byte[publicExponentLength];
+            Buffer.BlockCopy(publicKey, 6 + modulusLength, publicExponent, 0, publicExponentLength);
+
+            // ASN.1 uses big-endian, but the Proprietary Server Certificate uses little-endian, to utilize them, save little-endian format for both cases.
+            Array.Reverse(publicExponent);
+            Array.Reverse(modulus);
+        }
+
+        /// <summary>
+        /// Decode the SERVER_CERTIFICATE structure
+        /// </summary>
+        public static SERVER_CERTIFICATE DecodeServerCertificate(byte[] data, ref int currentIndex, uint serverCertLen)
+        {
+            SERVER_CERTIFICATE cert = new SERVER_CERTIFICATE();
+            // According to [MS-RDPBCGR] section 2.2.1.4.3.1, there is a "t" (1-byte field) in the dwVersion.
+            // The real version is the 0-30 bit.
+            var version = ParseUInt32(data, ref currentIndex, false);
+            cert.dwVersion = (SERVER_CERTIFICATE_dwVersion_Values)(version & 0x0FFFF);
+            if (cert.dwVersion == SERVER_CERTIFICATE_dwVersion_Values.CERT_CHAIN_VERSION_1)
+            {
+                // proprietary server certificate
+                cert.certData = RdpbcgrDecoder.ParseProprietaryServerCertificate(data, ref currentIndex);
+            }
+            else if (cert.dwVersion == SERVER_CERTIFICATE_dwVersion_Values.CERT_CHAIN_VERSION_2)
+            {
+                // X509 certificate chain
+                cert.certData = RdpbcgrDecoder.ParseX509CertificateChain(data, ref currentIndex, (int)serverCertLen - 4);
+            }
+            else
+            {
+                throw new Exception($"Invalid dwVersion of SERVER_CERTIFICATE: {version}");
+            }
+
+            return cert;
+        }
+
+        /// <summary>
+        /// Decode the public key from the specified certificate
+        /// </summary>
+        public static void DecodePubicKey(SERVER_CERTIFICATE cert, out byte[] publicExponent, out byte[] modulus)
+        {
+            publicExponent = null;
+            modulus = null;
+            if (cert.dwVersion == SERVER_CERTIFICATE_dwVersion_Values.CERT_CHAIN_VERSION_1)
+            {
+                // proprietary server certificate
+                var proprietaryCert = (PROPRIETARYSERVERCERTIFICATE)cert.certData;
+                RSA_PUBLIC_KEY rsaPublicKey = proprietaryCert.PublicKeyBlob;
+                publicExponent = BitConverter.GetBytes(rsaPublicKey.pubExp);
+                modulus = rsaPublicKey.modulus;
+            }
+            else if (cert.dwVersion == SERVER_CERTIFICATE_dwVersion_Values.CERT_CHAIN_VERSION_2)
+            {
+                // X509 certificate chain
+                var x509CertChain = (X509_CERTIFICATE_CHAIN)cert.certData;
+                int len = x509CertChain.CertBlobArray.Length;
+                // The public key is in the leaf node of the cert chain.
+                var x509Cert = new X509Certificate2(x509CertChain.CertBlobArray[len - 1].abCert);
+                var publicKey = x509Cert.PublicKey.EncodedKeyValue.RawData;
+                RdpbcgrDecoder.DecodeX509RSAPublicKey(publicKey, out modulus, out publicExponent);
+            }
+            else
+            {
+                throw new Exception($"Invalid dwVersion of SERVER_CERTIFICATE: {cert.dwVersion}");
+            }
+        }
+
         #endregion Sub Field Parsers: Mcs Connect Response
 
 
@@ -1653,7 +1731,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
             // TS_INPUT_CAPABILITYSET: imeFileName
             byte[] imeFileName = GetBytes(data, ref currentIndex,
-                ConstValue.TS_INPUT_CAPABILITY_SET_IME_FILE_NAME_LENGTH);
+                ConstValue.TS_INPUT_CAPABILITYSET_IME_FILE_NAME_LENGTH);
             set.imeFileName = BitConverter.ToString(imeFileName);
 
             // Check if data length is consistent with the decoded struct length
@@ -1972,7 +2050,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             pdu.shareDataHeader = ParseTsShareDataHeader(data, ref currentIndex);
 
             // TS_SYNCHRONIZE_PDU: messageType 
-            pdu.messageType = (messageType_Values)ParseUInt16(data, ref currentIndex, false);
+            pdu.messageType = (TS_SYNCHRONIZE_PDU_messageType_Values)ParseUInt16(data, ref currentIndex, false);
 
             // TS_SYNCHRONIZE_PDU: targetUser
             pdu.targetUser = ParseUInt16(data, ref currentIndex, false);
@@ -2436,7 +2514,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             ARC_SC_PRIVATE_PACKET packet = new ARC_SC_PRIVATE_PACKET();
 
             // ARC_SC_PRIVATE_PACKET: cbLen
-            packet.cbLen = (cbLen_Values)ParseUInt32(data, ref currentIndex, false);
+            packet.cbLen = ParseUInt32(data, ref currentIndex, false);
 
             // ARC_SC_PRIVATE_PACKET: Version
             packet.Version = (Version_Values)ParseUInt32(data, ref currentIndex, false);
@@ -3162,13 +3240,16 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 TS_FP_UPDATE update = null;
 
                 // Update header
-                byte updateHeader = ParseByte(data, ref currentIndex);
+                byte updateHeaderByte = ParseByte(data, ref currentIndex);
+
+                var updateHeader = new nested_TS_FP_UPDATE_updateHeader(updateHeaderByte);
 
                 // Get infomation from updateHeader
-                updateCode_Values updateCode;
-                fragmentation_Value fragmentation;
-                compression_Values compression;
-                GetFpUpdateHeaderInfo(updateHeader, out updateCode, out fragmentation, out compression);
+                var updateCode = updateHeader.updateCode;
+
+                var fragmentation = updateHeader.fragmentation;
+
+                var compression = updateHeader.compression;
 
                 // Get compressionFlags (optional)
                 compressedType_Values compressionFlags = 0;
@@ -3279,7 +3360,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="updateData">update data(decompressed)</param>
         /// <returns>TS_FP_UPDATE_ORDERS</returns>
         private TS_FP_UPDATE_ORDERS ParseTsFpUpdateOrders(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size,
             byte[] updateData)
@@ -3311,7 +3392,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="updateData">update data(decompressed)</param>
         /// <returns>TS_FP_UPDATE_BITMAP</returns>
         private TS_FP_UPDATE_BITMAP ParseTsFpUpdateBitmap(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size,
             byte[] updateData)
@@ -3346,7 +3427,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="updateData">update data(decompressed)</param>
         /// <returns>TS_FP_UPDATE_PALETTE</returns>
         private TS_FP_UPDATE_PALETTE ParseTsFpUpdatePalette(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size,
             byte[] updateData)
@@ -3380,7 +3461,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="size">update data size(before decompression)</param>
         /// <returns>TS_FP_UPDATE_SYNCHRONIZE</returns>
         private TS_FP_UPDATE_SYNCHRONIZE ParseTsFpUpdateSynchronize(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size)
         {
@@ -3408,7 +3489,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="updateData">update data(decompressed)</param>
         /// <returns>TS_FP_SURFCMDS</returns>
         private TS_FP_SURFCMDS ParseTsFpSurfCmds(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size,
             byte[] updateData)
@@ -3566,7 +3647,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="size">update data size(before decompression)</param>
         /// <returns>TS_FP_SYSTEMPOINTERHIDDENATTRIBUTE</returns>
         private TS_FP_SYSTEMPOINTERHIDDENATTRIBUTE ParseTsFpSystemPointerHiddenAttribute(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size)
         {
@@ -3593,7 +3674,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="size">update data size(before decompression)</param>
         /// <returns>TS_FP_SYSTEMPOINTERDEFAULTATTRIBUTE</returns>
         private TS_FP_SYSTEMPOINTERDEFAULTATTRIBUTE ParseTsFpSystemPointerDefaultAttribute(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size)
         {
@@ -3621,7 +3702,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="updateData">update data(decompressed)</param>
         /// <returns>TS_FP_POINTERPOSATTRIBUTE</returns>
         private TS_FP_POINTERPOSATTRIBUTE ParseTsFpPointerPosAttribute(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size,
             byte[] updateData)
@@ -3695,7 +3776,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="updateData">update data(decompressed)</param>
         /// <returns>TS_FP_COLORPOINTERATTRIBUTE</returns>
         private TS_FP_COLORPOINTERATTRIBUTE ParseTsFpColorPointerAttribute(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size,
             byte[] updateData)
@@ -3757,7 +3838,10 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             attribute.andMaskData = GetBytes(data, ref currentIndex, (int)attribute.lengthAndMask);
 
             // TS_COLORPOINTERATTRIBUTE: pad
-            attribute.pad = ParseByte(data, ref currentIndex);
+            if (currentIndex < data.Length)
+            {
+                attribute.pad = ParseByte(data, ref currentIndex);
+            }
 
             return attribute;
         }
@@ -3772,7 +3856,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="updateData">update data(decompressed)</param>
         /// <returns>TS_FP_CACHEDPOINTERATTRIBUTE</returns>
         private TS_FP_CACHEDPOINTERATTRIBUTE ParseTsFpCachedPointerAttribute(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size,
             byte[] updateData)
@@ -3825,7 +3909,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="updateData">update data(decompressed)</param>
         /// <returns>TS_FP_POINTERATTRIBUTE</returns>
         private TS_FP_POINTERATTRIBUTE ParseTsFpPointerAttribute(
-            byte updateHeader,
+            nested_TS_FP_UPDATE_updateHeader updateHeader,
             compressedType_Values compressionFlags,
             UInt16 size,
             byte[] updateData)
@@ -3900,66 +3984,6 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 }
                 return decryptedData;
             }
-        }
-
-
-        /// <summary>
-        /// Get information from Fast-path Output Header
-        /// </summary>
-        /// <param name="fpOutputHeader">fast-path output header</param>
-        /// <param name="actionCode">action code</param>
-        /// <param name="encryptionFlags">encryption flags</param>
-        private void GetFpOutputHeaderInfo(
-            byte fpOutputHeader,
-            out nested_TS_FP_UPDATE_PDU_fpOutputHeader_actionCode_Values actionCode,
-            out encryptionFlagsChgd_Values encryptionFlags)
-        {
-            // The following logic is derived from TD section [2.2.9.1.2]
-            // fpOutputHeader is a 1-byte, bit-packed field formed by:
-            // actionCode(2 bits) + reserved(4 bits) + encryptionFlags(2 bits)
-
-            // action code
-            byte code = (byte)(fpOutputHeader & 0x03);
-            actionCode = (nested_TS_FP_UPDATE_PDU_fpOutputHeader_actionCode_Values)code;
-
-            // encryption flags
-            byte flags = (byte)((fpOutputHeader & 0xc0) >> 6);
-            encryptionFlags = (encryptionFlagsChgd_Values)flags;
-
-            return;
-        }
-
-
-        /// <summary>
-        /// Get information from Fast-path Update Header
-        /// </summary>
-        /// <param name="updateHeader">update header</param>
-        /// <param name="updateCode">update code</param>
-        /// <param name="fragmentation">fragmentation</param>
-        /// <param name="compression">compression</param>
-        private void GetFpUpdateHeaderInfo(
-          byte updateHeader,
-          out updateCode_Values updateCode,
-          out fragmentation_Value fragmentation,
-          out compression_Values compression)
-        {
-            // The following logic is derived from TD section [2.2.9.1.2.1]
-            // updateHeader is a 1-byte, bit-packed field formed by:
-            // updateCode(4 bits) + fragmentation(2 bits) + compression(2 bits)
-
-            // updateCode
-            byte code = (byte)(updateHeader & 0x0f);
-            updateCode = (updateCode_Values)code;
-
-            // fragmentation
-            byte frag = (byte)((updateHeader & 0x30) >> 4);
-            fragmentation = (fragmentation_Value)frag;
-
-            // compression
-            byte comp = (byte)((updateHeader & 0xc0) >> 6);
-            compression = (compression_Values)comp;
-
-            return;
         }
         #endregion Fast-Path Update Parsers' helper functions
         #endregion Sub Field Parsers: Fast-Path Update PDU
@@ -4403,7 +4427,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
             // Get bytes for only one packet
             byte[] packetData = GetPacket(receivedBytes);
-            if (null == packetData)
+            if (packetData == null || packetData.Length == 0)
             {
                 // Received bytes does not contain enough data
                 consumedLength = 0;
@@ -4415,13 +4439,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             try
             {
                 pdu = DecodePdu(packetData);
-                if (pdu.GetType() == typeof(Server_X_224_Connection_Confirm_Pdu))
-                {
-                    // Negotiation-based security-enhanced Connection
-                    client.UpdateTransport();
-                }
             }
-            catch (FormatException e)
+            catch (Exception e)
             {
                 pdu = new ErrorPdu(e);
             }
@@ -4447,7 +4466,22 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
             // Get packet length according to PDU type (slow-path/fast-path)
             int packetLength = 0;
-            if (ConstValue.SLOW_PATH_PDU_INDICATOR_VALUE == receivedBytes[ConstValue.SLOW_PATH_PDU_INDICATOR_INDEX])
+
+            if (clientContext.IsExpectingEarlyUserAuthorizationResultPDU)
+            {
+                var pduUsedToCalculateSize = new Early_User_Authorization_Result_PDU();
+
+                int expectedLength = pduUsedToCalculateSize.ToBytes().Length;
+
+                if (receivedBytes.Length < expectedLength)
+                {
+                    // Not enough data for Early User Authorization Result PDU.
+                    return null;
+                }
+
+                packetLength = expectedLength;
+            }
+            else if (ConstValue.SLOW_PATH_PDU_INDICATOR_VALUE == receivedBytes[ConstValue.SLOW_PATH_PDU_INDICATOR_INDEX])
             {
                 // Slow-path PDU
                 if (receivedBytes.Length < Marshal.SizeOf(typeof(TpktHeader)))
@@ -4479,7 +4513,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
                 // receivedBytes[1] and receivedBytes[2] are the corresponding
                 // "length1" and "length2" fields in TS_FP_UPDATE_PDU
-                packetLength = CalculateFpUpdatePduLength(receivedBytes[1], receivedBytes[2]);
+                packetLength = RdpbcgrUtility.CalculateFpUpdatePduLength(receivedBytes[1], receivedBytes[2]);
             }
 
             // Received bytes does not contain enough data
@@ -4495,32 +4529,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         }
 
 
-        /// <summary>
-        /// Calculate the overall length of Server Fast-Path Update PDU 
-        /// (based on field values of "length1" and "length2")
-        /// </summary>
-        /// <param name="length1">value of length1 field</param>
-        /// <param name="length2">value of length2 field</param>
-        /// <returns>caculated PDU length</returns>
-        private UInt16 CalculateFpUpdatePduLength(byte length1, byte length2)
-        {
-            if ((ConstValue.MOST_SIGNIFICANT_BIT_FILTER & length1) == length1)
-            {
-                // when length1's most significant bit is not set
-                // only length1 is considered
-                return (UInt16)length1;
-            }
-            else
-            {
-                // when length1's most significant bit is set
-                // length1 and length2 are concatenated
-                byte[] buffer = new byte[2];
-                buffer[0] = length2;
-                buffer[1] = (byte)(ConstValue.MOST_SIGNIFICANT_BIT_FILTER & length1);
-                UInt16 length = BitConverter.ToUInt16(buffer, 0);
-                return length;
-            }
-        }
+
         #endregion Private Methods: Decoder Callback
 
 
@@ -4549,6 +4558,23 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             {
                 // switch RDSTLS PDU
                 pdu = SwitchRDSTLSAuthenticationPDU(data);
+            }
+            else if (clientContext.IsExpectingEarlyUserAuthorizationResultPDU)
+            {
+                var pduUsedToCalculateSize = new Early_User_Authorization_Result_PDU();
+
+                int expectedLength = pduUsedToCalculateSize.ToBytes().Length;
+
+                if (data.Length != expectedLength)
+                {
+                    // Inconsistent size for Early User Authorization Result PDU.
+                    throw new FormatException(ConstValue.ERROR_MESSAGE_DATA_LENGTH_INCONSISTENT);
+                }
+
+                pdu = DecodeEarlyUserAuthorizationResultPDU(data);
+
+                // Reset since one Early User Authorization Result PDU is expected.
+                clientContext.IsExpectingEarlyUserAuthorizationResultPDU = false;
             }
             else
             {
@@ -4620,7 +4646,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             {
                 // check type
                 byte pduType = data[currentIndex];
-                if (pduType == (byte)RDP_NEG_RSP_type_Values.V1)
+                if (pduType == (byte)RDP_NEG_RSP_type_Values.TYPE_RDP_NEG_RSP)
                 {
                     // X224 Connection Confirm PDU
                     Server_X_224_Connection_Confirm_Pdu confirmPdu = new Server_X_224_Connection_Confirm_Pdu();
@@ -4634,7 +4660,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
                     pdu = confirmPdu;
                 }
-                else if (pduType == (byte)RDP_NEG_FAILURE_type_Values.V1)
+                else if (pduType == (byte)RDP_NEG_FAILURE_type_Values.TYPE_RDP_NEG_FAILURE)
                 {
                     // X224 Negotiate Failure PDU
                     Server_X_224_Negotiate_Failure_Pdu failurePdu = new Server_X_224_Negotiate_Failure_Pdu();
@@ -4675,6 +4701,25 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             return pdu;
         }
 
+        /// <summary>
+        /// Decode Early User Authorization Result PDU.
+        /// </summary>
+        /// <param name="data">Data containing the PDU to be decoded.</param>
+        /// <returns>A decoded Early User Authorization Result PDU.</returns>
+        public StackPacket DecodeEarlyUserAuthorizationResultPDU(byte[] data)
+        {
+            int currentIndex = 0;
+
+            var earlyUserAuthorizationResultPDU = new Early_User_Authorization_Result_PDU();
+
+            earlyUserAuthorizationResultPDU.authorizationResult = (Authorization_Result_value)ParseUInt32(data, ref currentIndex, false);
+
+
+            // Check if data length exceeded expectation.
+            VerifyDataLength(data.Length, currentIndex, ConstValue.ERROR_MESSAGE_DATA_LENGTH_EXCEEDED);
+
+            return earlyUserAuthorizationResultPDU;
+        }
 
         /// <summary>
         /// [TD Reference 3.2.5.3.4]
@@ -4885,7 +4930,18 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 // RDPELE Type PDU
                 RdpelePdu elePdu = new RdpelePdu(clientContext);
                 elePdu.commonHeader = pdu.commonHeader;
-                elePdu.rdpeleData = decryptedUserData;
+                elePdu.preamble = pdu.preamble;
+
+                elePdu.rdpeleData = new byte[decryptedUserData.Length - userDataIndex];
+                Buffer.BlockCopy(decryptedUserData, userDataIndex, elePdu.rdpeleData, 0, decryptedUserData.Length - userDataIndex);
+
+                // If this is the last RDPELE message, change the client context status to end licensing packets processing.
+                if (pdu.preamble.bMsgType == bMsgType_Values.NEW_LICENSE
+                    || pdu.preamble.bMsgType == bMsgType_Values.UPGRADE_LICENSE)
+                {
+                    clientContext.IsWaitingLicenseErrorPdu = false;
+                }
+
                 return elePdu;
             }
 
@@ -5360,12 +5416,13 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             TS_FP_UPDATE_PDU pdu = new TS_FP_UPDATE_PDU();
 
             // TS_FP_UPDATE_PDU: fpOutputHeader
-            pdu.fpOutputHeader = ParseByte(data, ref currentIndex);
+            byte fpOutputHeader = ParseByte(data, ref currentIndex);
+            pdu.fpOutputHeader = new nested_TS_FP_UPDATE_PDU_fpOutputHeader(fpOutputHeader);
 
             // Get infomation from fpOutputHeader
-            nested_TS_FP_UPDATE_PDU_fpOutputHeader_actionCode_Values actionCode;
-            encryptionFlagsChgd_Values encryptionFlags;
-            GetFpOutputHeaderInfo(pdu.fpOutputHeader, out actionCode, out encryptionFlags);
+            var actionCode = pdu.fpOutputHeader.action;
+
+            var encryptionFlags = pdu.fpOutputHeader.flags;
 
             // TS_FP_UPDATE_PDU: length1
             pdu.length1 = ParseByte(data, ref currentIndex);

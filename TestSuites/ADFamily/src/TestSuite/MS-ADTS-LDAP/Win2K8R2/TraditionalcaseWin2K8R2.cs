@@ -1591,6 +1591,11 @@ namespace Microsoft.Protocols.TestSuites.ActiveDirectory.Adts.Ldap
                 ADImplementations.AD_DS,
                 adLdapModelAdapter.PDCNetbiosName);
 
+            // Recreate TestComputer1 computer account object.
+            // It was deleted in the TestCleanup method.
+            // It should be recreated, because it will be used further in this case.
+            adLdapModelAdapter.NewComputer(adLdapModelAdapter.testComputer1Name);
+
             string dn = "cn=" + adLdapModelAdapter.testComputer1Name + ",cn=computers," + adLdapModelAdapter.rootDomainNC;
 
             Utilities.SetAccessRights(
@@ -3115,7 +3120,12 @@ namespace Microsoft.Protocols.TestSuites.ActiveDirectory.Adts.Ldap
                     Microsoft.Protocols.TestTools.StackSdk.ActiveDirectory.Adts.Asn1CodecV3.SearchResultEntry searchResultEntry =
                         (Microsoft.Protocols.TestTools.StackSdk.ActiveDirectory.Adts.Asn1CodecV3.SearchResultEntry)
                         entrypacket.GetInnerRequestOrResponse();
-                    Site.CaptureRequirementIfAreEqual(0, searchResultEntry.attributes.Elements.Length, 248,
+
+                    var resultCount = searchResultEntry.attributes.Elements.Length != 0 ?
+                        searchResultEntry.attributes.Elements[0].vals.Elements.Length :
+                        0;
+
+                    Site.CaptureRequirementIfAreEqual(0, resultCount, 248,
                     @"While making LDAP request to msDs-TopQuotaUsage rootDSE attribute, if the caller does not have the 
                     RIGHT_DS_READ_PROPERTY access right on the Quotas container the search operation will succeed but no results will be returned.");
                 }

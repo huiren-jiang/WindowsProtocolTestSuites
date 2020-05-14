@@ -12,7 +12,7 @@ namespace Microsoft.Protocols.TestSuites.ActiveDirectory.Lsat
     using Microsoft.Protocols.TestTools.StackSdk.Dtyp;
     using Microsoft.Protocols.TestTools.StackSdk.Networking.Rpce;
     using Microsoft.Protocols.TestTools.StackSdk.Security.Nrpc;
-    using Microsoft.Protocols.TestTools.StackSdk.Security.Sspi;
+    using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
     using Microsoft.Protocols.TestSuites.ActiveDirectory.Common;
 
     /// <summary>
@@ -467,7 +467,7 @@ namespace Microsoft.Protocols.TestSuites.ActiveDirectory.Lsat
 
                 this.count = LsatUtilities.TestsuiteMaxUserCount;
 
-                LsatUtilities.InitializeAccountNames();
+                LsatUtilities.InitializeAccountNames(DomainAdministratorName);
 
                 returnValue = LsatClientStack.LsarLookupNames3(
                     this.policyHandle.Value,

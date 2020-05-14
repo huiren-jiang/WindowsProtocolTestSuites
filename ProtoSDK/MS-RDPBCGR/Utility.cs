@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
 using Microsoft.Protocols.TestTools.ExtendedLogging;
 using System;
 using System.Collections.Generic;
@@ -84,11 +85,17 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 return null;
             }
 
-            byte[] encryptedResult = new byte[modulus.Length];
-            byte[] result = RSAEncrypt(randomData, exponent, modulus);
-            int copyLength = (result.Length > encryptedResult.Length) ? encryptedResult.Length : result.Length;
-            Array.Copy(result, encryptedResult, copyLength);
-            return encryptedResult;
+            byte[] encryptedData = RSAEncrypt(randomData, exponent, modulus);
+
+            // The result may contain extra zero in the end (the extra zero in the end indicate it is a positive number),
+            // the actual length should subtract the zero length.
+            // So divide the length by 8 and multiple the length by 8 again.
+            // [MS-RDPBCGR] 5.3.4.1 The resultant encrypted client random is copied into a zeroed-out buffer, which is of size: (bitlen / 8) + 8
+            // So add 8 bytes padding in the end.
+            byte[] result = new byte[encryptedData.Length / 8 * 8 + 8];
+
+            Array.Copy(encryptedData, result, encryptedData.Length);
+            return result;
         }
 
 
@@ -481,7 +488,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <param name="commonHeader">The header to be filled.</param>
         /// <param name="flag">Flag to be set in TS_SECURITY_HEADER.</param>
         /// <param name="context">Specify the user channel Id, I/O channel Id and encryption level.</param>
-        internal static void FillCommonHeader(
+        public static void FillCommonHeader(
             RdpbcgrClientContext context,
             ref SlowPathPduCommonHeader commonHeader,
             TS_SECURITY_HEADER_flags_Values flag)
@@ -688,10 +695,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 securityHeader = header;
             }
             // else no security header
-            if (((flag & TS_SECURITY_HEADER_flags_Values.SEC_AUTODETECT_REQ) == TS_SECURITY_HEADER_flags_Values.SEC_AUTODETECT_REQ
-                || (flag & TS_SECURITY_HEADER_flags_Values.SEC_AUTODETECT_RSP) == TS_SECURITY_HEADER_flags_Values.SEC_AUTODETECT_RSP
-                || (flag & TS_SECURITY_HEADER_flags_Values.SEC_TRANSPORT_REQ) == TS_SECURITY_HEADER_flags_Values.SEC_TRANSPORT_REQ
-                || (flag & TS_SECURITY_HEADER_flags_Values.SEC_HEARTBEAT) == TS_SECURITY_HEADER_flags_Values.SEC_HEARTBEAT)
+            if ((flag.HasFlag(TS_SECURITY_HEADER_flags_Values.SEC_AUTODETECT_REQ)
+                || flag.HasFlag(TS_SECURITY_HEADER_flags_Values.SEC_AUTODETECT_RSP)
+                || flag.HasFlag(TS_SECURITY_HEADER_flags_Values.SEC_TRANSPORT_REQ)
+                || flag.HasFlag(TS_SECURITY_HEADER_flags_Values.SEC_HEARTBEAT)
+                || flag.HasFlag(TS_SECURITY_HEADER_flags_Values.SEC_LICENSE_PKT))
                 && securityHeader == null)
             {
                 //if flag contain SEC_AUTODETECT_REQ, it's for auto-detect, the securityheader must present
@@ -932,6 +940,24 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
             return netSync;
         }
+
+        /// <summary>
+        /// Convert byte list to byte array and reszie the length field of the tpktHeader.
+        /// </summary>
+        public static byte[] ToBytes(byte[] sendBuffer)
+        {
+            // If the tpkeHeader length has not been set (= 0), reset it.
+            // Otherwise, keep the old value.
+            if (sendBuffer.Length >= Marshal.SizeOf(typeof(TpktHeader))
+                && sendBuffer[2] == 0 && sendBuffer[3] == 0)
+            {
+                ResetTpktHeaderLength(sendBuffer);
+            }
+            // else do nothing
+
+            return sendBuffer;
+        }
+
         /// <summary>
         /// Convert byte list to byte array and reszie the length field of the tpktHeader.
         /// </summary>
@@ -941,16 +967,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         {
             byte[] allDataBuffer = sendBuffer.ToArray();
 
-            // If the tpkeHeader length has not been set (= 0), reset it.
-            // Otherwise, keep the old value.
-            if (allDataBuffer.Length >= Marshal.SizeOf(typeof(TpktHeader))
-                && allDataBuffer[2] == 0 && allDataBuffer[3] == 0)
-            {
-                ResetTpktHeaderLength(allDataBuffer);
-            }
-            // else do nothing
-
-            return allDataBuffer;
+            return ToBytes(allDataBuffer);
         }
 
 
@@ -1063,79 +1080,180 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             return result.ToArray();
         }
 
-        #region certificate API for RDSTLS
-        [DllImport("Crypt32.dll", CharSet = CharSet.Unicode)]
-        private static extern bool CertSerializeCertificateStoreElement(
-                IntPtr pCertContext,
-                uint dwFlags,
-                [MarshalAs(UnmanagedType.LPArray,ArraySubType = UnmanagedType.U1)]
-            byte[] pbElement,
-                ref uint pcbElement
-                );
+        /// <summary>
+        /// Return the size of TS_FP_INPUT_PDU
+        /// </summary>
+        public static int GetPduSize(TS_FP_INPUT_PDU pdu)
+        {
+            // [MS-RDPBCGR] section 2.2.8.1.2	Client Fast-Path Input Event PDU (TS_FP_INPUT_PDU)
+            int pduSize = 0;
+            pduSize += 1; // pdu.fpInputHeader
+            pduSize += 1; // pdu.length1
+            if ((ConstValue.MOST_SIGNIFICANT_BIT_FILTER & pdu.length1) != pdu.length1)
+            {
+                // length1's most significant bit is set, then length2 is present.
+                pduSize += 1; // Optional: pdu.length2;
+            }
 
-        private const uint CRYPT_STRING_BASE64 = 0x00000001;
+            if (pdu.fipsInformation.length != 0)
+            {
+                pduSize += 4; // Optional: pdu.fipsInformation
+            }
 
-        [DllImport("Crypt32.dll", CharSet = CharSet.Unicode)]
-        private static extern bool CryptBinaryToString(
-            [MarshalAs(UnmanagedType.LPArray,ArraySubType = UnmanagedType.U1)]
-            byte[] pbBinary,
-            uint cbBinary,
-            uint dwFlags,
-            [MarshalAs(UnmanagedType.LPArray,ArraySubType = UnmanagedType.U2)]
-            char[] pszString,
-            ref uint pcchString
-            );
+            if (pdu.dataSignature != null)
+            {
+                pduSize += 8; //Optional: pdu.dataSignature 
+            }
+
+            int numberEvents = pdu.fpInputHeader.numEvents;
+            if (numberEvents == 0)
+            {
+                numberEvents = pdu.numberEvents;
+                if (numberEvents != 0)
+                {
+                    pduSize += 1; //Optional: pdu.numberEvents
+                }
+                else
+                {
+                    return pduSize;
+                }
+            }
+
+            // [MS-RDPBCGR] section 2.2.8.1.2.2	Fast-Path Input Event (TS_FP_INPUT_EVENT)
+            TS_FP_INPUT_EVENT inputEvent;
+            for (int i = 0; i < numberEvents; i++)
+            {
+                inputEvent = pdu.fpInputEvents[i];
+                pduSize += 1; // inputEvent.eventHeader;
+                if (inputEvent.eventData != null)
+                {
+                    pduSize += Marshal.SizeOf(inputEvent.eventData.GetType());
+                }
+            }
+
+            return pduSize;
+        }
 
         /// <summary>
-        /// Encode the certificate according to the windows implementation.
+        /// Return the size of TS_FP_UPDATE_PDU
+        /// </summary>
+        public static int GetPduSize(TS_FP_UPDATE_PDU pdu)
+        {
+            // [MS-RDPBCGR] section 2.2.9.1.2	Server Fast-Path Update PDU (TS_FP_UPDATE_PDU)
+            int pduSize = 0;
+            pduSize += 1; // pdu.fpInputHeader
+            pduSize += 1; // pdu.length1
+            if ((ConstValue.MOST_SIGNIFICANT_BIT_FILTER & pdu.length1) != pdu.length1)
+            {
+                // length1's most significant bit is set, then length2 is present.
+                pduSize += 1; // Optional: pdu.length2;
+            }
+
+            if (pdu.fipsInformation.length != 0)
+            {
+                pduSize += 4; // Optional: pdu.fipsInformation
+            }
+
+            if (pdu.dataSignature != null)
+            {
+                pduSize += 8; //Optional: pdu.dataSignature 
+            }
+
+            // [MS-RDPBCGR] section 2.2.9.1.2.1	Fast-Path Update (TS_FP_UPDATE)
+            TS_FP_UPDATE fpUpdate;
+            for (int i = 0; i < pdu.fpOutputUpdates.Length; i++)
+            {
+                fpUpdate = pdu.fpOutputUpdates[i];
+                pduSize += 1; // fpUpdate.updateHeader
+
+                if (fpUpdate.updateHeader.compression == compression_Values.FASTPATH_OUTPUT_COMPRESSION_USED)
+                {
+                    pduSize += 1; //Optional: fpUpdate.compressionFlags 
+                }
+
+                pduSize += 2; //fpUpdate.size
+
+                pduSize += fpUpdate.size; //updateData 
+            }
+
+            return pduSize;
+        }
+
+        /// <summary>
+        /// Calculate the overall length of TS_FP_INPUT_PDU or TS_FP_UPDATE_PDU
+        /// (based on field values of "length1" and "length2")
+        /// </summary>
+        /// <param name="length1">value of length1 field</param>
+        /// <param name="length2">value of length2 field</param>
+        /// <returns>caculated PDU length</returns>
+        public static UInt16 CalculateFpUpdatePduLength(byte length1, byte length2)
+        {
+            if ((ConstValue.MOST_SIGNIFICANT_BIT_FILTER & length1) == length1)
+            {
+                // when length1's most significant bit is not set
+                // only length1 is considered
+                return (UInt16)length1;
+            }
+            else
+            {
+                // when length1's most significant bit is set
+                // length1 and length2 are concatenated
+                byte[] buffer = new byte[2];
+                buffer[0] = length2;
+                buffer[1] = (byte)(ConstValue.MOST_SIGNIFICANT_BIT_FILTER & length1);
+                UInt16 length = BitConverter.ToUInt16(buffer, 0);
+                return length;
+            }
+        }
+
+        /// <summary>
+        /// Encode the certificate.
         /// </summary>
         /// <param name="certificate">The certificate to be encoded.</param>
         /// <returns></returns>
         public static byte[] EncodeCertificate(X509Certificate2 certificate)
         {
-            uint cbSerialized = 0;
-            bool bRet;
-            bRet = CertSerializeCertificateStoreElement(certificate.Handle, 0, null, ref cbSerialized);
-            byte[] serialized = new byte[cbSerialized];
-            bRet = CertSerializeCertificateStoreElement(certificate.Handle, 0, serialized, ref cbSerialized);
+            var container = new TARGET_CERTIFICATE_CONTAINER();
 
-            uint cbCrypted = 0;
+            container.elements = new CERTIFICATE_META_ELEMENT[1];
 
-            bRet = CryptBinaryToString(serialized, cbSerialized, CRYPT_STRING_BASE64, null, ref cbCrypted);
-            char[] crypted = new char[cbCrypted];
-            bRet = CryptBinaryToString(serialized, cbSerialized, CRYPT_STRING_BASE64, crypted, ref cbCrypted);
+            var element = new CERTIFICATE_META_ELEMENT();
 
-            var result = new byte[crypted.Length * 2];
-            for (int i = 0; i < crypted.Length; i++)
-            {
-                result[2 * i + 0] = (byte)((crypted[i] & 0x00ff) >> 0);
-                result[2 * i + 1] = (byte)((crypted[i] & 0xff00) >> 8);
-            }
+            element.type = (UInt32)CERTIFICATE_META_ELEMENT_TypeEnum.ELEMENT_TYPE_CERTIFICATE;
+
+            element.encoding = (UInt32)CERTIFICATE_META_ELEMENT_EncodingEnum.ENCODING_TYPE_ASN1_DER;
+
+            element.elementSize = (UInt32)certificate.RawData.Length;
+
+            element.elementData = certificate.RawData;
+
+            container.elements[0] = element;
+
+            // Encode using Base64 in Unicode format
+            var encodedString = Convert.ToBase64String(container.Encode());
+
+            var result = EncodeUnicodeStringToBytes(encodedString);
 
             return result;
         }
 
-        #endregion
-
         #region private methods
         /// <summary>
-        /// Do RSA encryption.
+        /// Do RSA encryption. Follow the example in [MS-RDPBCGR] 4.8
         /// </summary>
         /// <param name="data">The data to be encrypted.</param>
         /// <param name="exponent">Exponent of RSA.</param>
         /// <param name="modulus">Modulus of RSA.</param>
-        /// <returns>Whether the certificate is valid.</returns>
+        /// <returns>Encrypted data.</returns>
         private static byte[] RSAEncrypt(byte[] data, byte[] exponent, byte[] modulus)
         {
-            byte[] tempData = data;
-            byte[] tempExponent = exponent;
-            byte[] tempModulus = modulus;
-
-            Array.Resize(ref tempData, tempData.Length + 1);
-
-            Array.Resize(ref tempExponent, tempExponent.Length + 1);
-
-            Array.Resize(ref tempModulus, tempModulus.Length + 1);
+            // Add an extra zero after the end of the byte array, to indicate that it is a positive number.
+            byte[] tempData = new byte[data.Length + 1];
+            byte[] tempExponent = new byte[exponent.Length + 1];
+            byte[] tempModulus = new byte[modulus.Length + 1];
+            Buffer.BlockCopy(data, 0, tempData, 0, data.Length);
+            Buffer.BlockCopy(exponent, 0, tempExponent, 0, exponent.Length);
+            Buffer.BlockCopy(modulus, 0, tempModulus, 0, modulus.Length);
 
             BigInteger mpData = new BigInteger(tempData);
             BigInteger mpExponent = new BigInteger(tempExponent);
@@ -1145,11 +1263,6 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             BigInteger mpResult = BigInteger.ModPow(mpData, mpExponent, mpModulus);
 
             byte[] result = mpResult.ToByteArray();
-
-            if (result[result.Length - 1] == 0)
-            {
-                Array.Resize(ref result, result.Length - 1);
-            }
 
             return result;
         }

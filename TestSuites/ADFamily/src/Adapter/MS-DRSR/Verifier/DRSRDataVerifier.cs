@@ -8,7 +8,7 @@ using System.Text;
 using System.DirectoryServices.Protocols;
 using Microsoft.Protocols.TestTools;
 using Microsoft.Protocols.TestTools.StackSdk;
-using Microsoft.Protocols.TestTools.StackSdk.Security.Sspi;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
 using Microsoft.Protocols.TestTools.StackSdk.ActiveDirectory.Drsr;
 
 namespace Microsoft.Protocols.TestSuites.ActiveDirectory.Drsr
@@ -1071,17 +1071,17 @@ namespace Microsoft.Protocols.TestSuites.ActiveDirectory.Drsr
             if (ncType == NamingContext.SchemaNC)
             {
                 nc = target.Domain.SchemaNC;
-                owner = ldapAd.GetAttributeValue(p, LdapUtility.ConvertUshortArrayToString(nc.StringName), "fSMORoleOwner").ToString();
+                owner = ldapAd.GetAttributeValueInString(p, LdapUtility.ConvertUshortArrayToString(nc.StringName), "fSMORoleOwner");
             }
             else if (ncType == NamingContext.ConfigNC)
             {
                 nc = target.Domain.ConfigNC;
-                owner = ldapAd.GetAttributeValue(p, "cn=partitions," + LdapUtility.ConvertUshortArrayToString(nc.StringName), "fSMORoleOwner").ToString();
+                owner = ldapAd.GetAttributeValueInString(p, "cn=partitions," + LdapUtility.ConvertUshortArrayToString(nc.StringName), "fSMORoleOwner");
             }
             else if (ncType == NamingContext.DomainNC)
             {
                 nc = ((AddsDomain)target.Domain).DomainNC;
-                owner = ldapAd.GetAttributeValue(p, LdapUtility.ConvertUshortArrayToString(nc.StringName), "fSMORoleOwner").ToString();
+                owner = ldapAd.GetAttributeValueInString(p, LdapUtility.ConvertUshortArrayToString(nc.StringName), "fSMORoleOwner");
 
             }
             testSite.Assert.IsFalse(owner.ToLower().Contains(target.ServerObjectName.ToLower()), "server should abandon its fsmo roles for successful IDL_DRSReplicaDemotion");
@@ -1314,7 +1314,8 @@ namespace Microsoft.Protocols.TestSuites.ActiveDirectory.Drsr
                                 "IDL_DRSVerifyNames: Checking GUIDs - got: {0}, expect: {1}, GUIDs of the DSNames should be the same.",
                                 actualGuid, guid
                                 );
-                            goto default;
+                            // We didn't set the SID for the object.
+                            break;
                         }
                     case DRS_MSG_VERIFYREQ_V1_dwFlags_Values.DRS_VERIFY_FPOS:
                         goto default;
@@ -1373,7 +1374,7 @@ namespace Microsoft.Protocols.TestSuites.ActiveDirectory.Drsr
                     );
 
                 // Get RDN Ldap value
-                string rdnLdap = (string)ldapAd.GetAttributeValue(srv, objectDNs[0], "name");
+                string rdnLdap = ldapAd.GetAttributeValueInString(srv, objectDNs[0], "name");
 
                 testSite.Assert.IsTrue(
                     DrsrHelper.AreDNsSame(rdnLdap, rdn),

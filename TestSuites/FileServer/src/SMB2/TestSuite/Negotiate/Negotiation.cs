@@ -6,7 +6,9 @@ using Microsoft.Protocols.TestSuites.FileSharing.Common.TestSuite;
 using Microsoft.Protocols.TestTools;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
 {
@@ -96,7 +98,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             //According to server response, send new dialects for negotiation.
             BaseTestSite.Log.Add(
                 LogEntryKind.TestStep,
-                "Send Negotiate request with dialects: Smb2002, Smb21, Smb30, SMB302");
+                $"Send Negotiate request with dialects: {string.Join(",", TestConfig.RequestDialects)}");
             status = client.Negotiate(
                 Packet_Header_Flags_Values.NONE,
                 TestConfig.RequestDialects,
@@ -120,7 +122,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             BaseTestSite.Log.Add(
                 LogEntryKind.TestStep,
                 "Send MultiProtocolNegotiate request with dialects: SMB 2.002");
-            string[] dialects = new string[] { "SMB 2.002"};
+            string[] dialects = new string[] { "SMB 2.002" };
             status = client.MultiProtocolNegotiate(
                 dialects,
                 (Packet_Header header, NEGOTIATE_Response response) =>
@@ -145,7 +147,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         {
             BaseTestSite.Log.Add(
                 LogEntryKind.TestStep,
-                "Send Negotiate request with dialects: Smb2002, Smb21, Smb30, SMB302 and Signing Required.");
+                $"Send Negotiate request with dialects: {string.Join(",", TestConfig.RequestDialects)} and Signing Required.");
             status = client.Negotiate(
                 Packet_Header_Flags_Values.NONE,
                 TestConfig.RequestDialects,
@@ -166,7 +168,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with Smb 2.002 dialect.")]
         public void BVT_Negotiate_SMB2002()
-        {            
+        {
             NegotiateWithSpecificDialect(DialectRevision.Smb2002);
         }
 
@@ -186,7 +188,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with Smb 3.0 dialect.")]
         public void BVT_Negotiate_SMB30()
-        {            
+        {
             NegotiateWithSpecificDialect(DialectRevision.Smb30);
         }
 
@@ -196,7 +198,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Negotiate)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with Smb 3.02 dialect.")]
         public void BVT_Negotiate_SMB302()
-        {            
+        {
             NegotiateWithSpecificDialect(DialectRevision.Smb302);
         }
 
@@ -205,14 +207,14 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Bvt)]
         [TestCategory(TestCategories.Smb2002)]
         [TestCategory(TestCategories.Negotiate)]
-        [Description("This test case is designed to test whether server (including the server doesn't implement dialect 3.11) " + 
+        [Description("This test case is designed to test whether server (including the server doesn't implement dialect 3.11) " +
             " can handle NEGOTIATE with SMB 3.11 dialect and Negotiate Contexts.")]
         public void BVT_Negotiate_SMB311()
         {
             DialectRevision clientMaxDialectSupported = DialectRevision.Smb311;
             PreauthIntegrityHashID[] preauthHashAlgs = new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 };
-            EncryptionAlgorithm[] encryptionAlgs = new EncryptionAlgorithm[] { 
-                EncryptionAlgorithm.ENCRYPTION_AES128_GCM, 
+            EncryptionAlgorithm[] encryptionAlgs = new EncryptionAlgorithm[] {
+                EncryptionAlgorithm.ENCRYPTION_AES128_GCM,
                 EncryptionAlgorithm.ENCRYPTION_AES128_CCM };
 
             BaseTestSite.Log.Add(
@@ -241,7 +243,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             PreauthIntegrityHashID[] preauthHashAlgs = new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 };
 
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
-                BaseTestSite.Assert.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
 
             BaseTestSite.Log.Add(
                LogEntryKind.TestStep,
@@ -266,14 +268,14 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             "SMB2_ENCRYPTION_CAPABILITIES context with AES-128-CCM preferred.")]
         public void BVT_Negotiate_SMB311_Preauthentication_Encryption_CCM()
         {
+            if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+
             DialectRevision clientMaxDialectSupported = DialectRevision.Smb311;
             PreauthIntegrityHashID[] preauthHashAlgs = new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 };
-            EncryptionAlgorithm[] encryptionAlgs = new EncryptionAlgorithm[] { 
-                EncryptionAlgorithm.ENCRYPTION_AES128_CCM, 
+            EncryptionAlgorithm[] encryptionAlgs = new EncryptionAlgorithm[] {
+                EncryptionAlgorithm.ENCRYPTION_AES128_CCM,
                 EncryptionAlgorithm.ENCRYPTION_AES128_GCM };
-
-            if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
-                BaseTestSite.Assert.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
 
             BaseTestSite.Log.Add(
                LogEntryKind.TestStep,
@@ -293,19 +295,19 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestCategory(TestCategories.Bvt)]
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Negotiate)]
-        [Description("This test case is designed to test whether server can handle NEGOTIATE with " + 
+        [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and SMB2_PREAUTH_INTEGRITY_CAPABILITIES context and " +
             "SMB2_ENCRYPTION_CAPABILITIES context with AES-128-GCM preferred.")]
         public void BVT_Negotiate_SMB311_Preauthentication_Encryption_GCM()
         {
+            if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+
             DialectRevision clientMaxDialectSupported = DialectRevision.Smb311;
             PreauthIntegrityHashID[] preauthHashAlgs = new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 };
-            EncryptionAlgorithm[] encryptionAlgs = new EncryptionAlgorithm[] { 
-                EncryptionAlgorithm.ENCRYPTION_AES128_GCM, 
+            EncryptionAlgorithm[] encryptionAlgs = new EncryptionAlgorithm[] {
+                EncryptionAlgorithm.ENCRYPTION_AES128_GCM,
                 EncryptionAlgorithm.ENCRYPTION_AES128_CCM };
-
-            if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
-                BaseTestSite.Assert.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
 
             BaseTestSite.Log.Add(
                LogEntryKind.TestStep,
@@ -324,13 +326,39 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         [TestMethod]
         [TestCategory(TestCategories.Smb311)]
         [TestCategory(TestCategories.Negotiate)]
+        [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
+            "Smb 3.11 dialect and with all the three Negotiate Contexts.")]
+        public void Negotiate_SMB311_WithAllContexts()
+        {
+            if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+
+            var encryptionAlgs = new EncryptionAlgorithm[] {
+                EncryptionAlgorithm.ENCRYPTION_AES128_GCM,
+                EncryptionAlgorithm.ENCRYPTION_AES128_CCM };
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send Negotiate request with dialect SMB 3.11, and with all the three Negotiate Contexts.");
+            client.NegotiateWithContexts(
+                Packet_Header_Flags_Values.NONE,
+                Smb2Utility.GetDialects(DialectRevision.Smb311),
+                preauthHashAlgs: new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 },
+                encryptionAlgs: encryptionAlgs,
+                compressionAlgorithms: TestConfig.SupportedCompressionAlgorithmList.ToArray(),
+                checker: (Packet_Header header, NEGOTIATE_Response response) =>
+                {
+                    CheckNegotiateResponse(header, response, DialectRevision.Smb311, encryptionAlgs, TestConfig.IsCompressionSupported());
+                });
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Smb311)]
+        [TestCategory(TestCategories.Negotiate)]
         [TestCategory(TestCategories.UnexpectedContext)]
         [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
             "Smb 3.11 dialect and without any Negotiate Contexts.")]
         public void Negotiate_SMB311_WithoutAnyContexts()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
-                BaseTestSite.Assert.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send Negotiate request with dialect SMB 3.11, and without any Negotiate Contexts.");
             client.NegotiateWithContexts(
@@ -342,7 +370,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
                 {
                     BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify server fails the negotiate request with STATUS_INVALID_PARAMETER.");
                     BaseTestSite.Assert.AreEqual(Smb2Status.STATUS_INVALID_PARAMETER, header.Status,
-                        "[MS-SMB2] 3.3.5.4 If the negotiate context list does not contain exactly one SMB2_PREAUTH_INTEGRITY_CAPABILITIES negotiate context, " + 
+                        "[MS-SMB2] 3.3.5.4 If the negotiate context list does not contain exactly one SMB2_PREAUTH_INTEGRITY_CAPABILITIES negotiate context, " +
                         "then the server MUST fail the negotiate request with STATUS_INVALID_PARAMETER.");
                 });
         }
@@ -356,7 +384,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
         public void Negotiate_SMB311_WithEncryptionContextWithoutIntegrityContext()
         {
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
-                BaseTestSite.Assert.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send Negotiate request with dialect SMB 3.11, with SMB2_ENCRYPTION_CAPABILITIES context, " +
                 "without SMB2_PREAUTH_INTEGRITY_CAPABILITIES context.");
@@ -364,9 +392,67 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
                 Packet_Header_Flags_Values.NONE,
                 Smb2Utility.GetDialects(DialectRevision.Smb311),
                 preauthHashAlgs: null,
-                encryptionAlgs: new EncryptionAlgorithm[] { 
-                EncryptionAlgorithm.ENCRYPTION_AES128_GCM, 
+                encryptionAlgs: new EncryptionAlgorithm[] {
+                EncryptionAlgorithm.ENCRYPTION_AES128_GCM,
                 EncryptionAlgorithm.ENCRYPTION_AES128_CCM },
+                checker: (Packet_Header header, NEGOTIATE_Response response) =>
+                {
+                    BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify server fails the negotiate request with STATUS_INVALID_PARAMETER.");
+                    BaseTestSite.Assert.AreEqual(Smb2Status.STATUS_INVALID_PARAMETER, header.Status,
+                        "[MS-SMB2] 3.3.5.4 If the negotiate context list does not contain exactly one SMB2_PREAUTH_INTEGRITY_CAPABILITIES negotiate context, " +
+                        "then the server MUST fail the negotiate request with STATUS_INVALID_PARAMETER.");
+                });
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Smb311)]
+        [TestCategory(TestCategories.Negotiate)]
+        [TestCategory(TestCategories.UnexpectedContext)]
+        [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
+            "Smb 3.11 dialect, with SMB2_COMPRESSION_CAPABILITIES Context and without SMB2_PREAUTH_INTEGRITY_CAPABILITIES Context.")]
+        public void Negotiate_SMB311_WithCompressionContextWithoutIntegrityContext()
+        {
+            if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send Negotiate request with dialect SMB 3.11, with SMB2_COMPRESSION_CAPABILITIES context, " +
+                "without SMB2_PREAUTH_INTEGRITY_CAPABILITIES context.");
+            client.NegotiateWithContexts(
+                Packet_Header_Flags_Values.NONE,
+                Smb2Utility.GetDialects(DialectRevision.Smb311),
+                preauthHashAlgs: null,
+                encryptionAlgs: null,
+                compressionAlgorithms: TestConfig.SupportedCompressionAlgorithmList.ToArray(),
+                checker: (Packet_Header header, NEGOTIATE_Response response) =>
+                {
+                    BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify server fails the negotiate request with STATUS_INVALID_PARAMETER.");
+                    BaseTestSite.Assert.AreEqual(Smb2Status.STATUS_INVALID_PARAMETER, header.Status,
+                        "[MS-SMB2] 3.3.5.4 If the negotiate context list does not contain exactly one SMB2_PREAUTH_INTEGRITY_CAPABILITIES negotiate context, " +
+                        "then the server MUST fail the negotiate request with STATUS_INVALID_PARAMETER.");
+                });
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Smb311)]
+        [TestCategory(TestCategories.Negotiate)]
+        [TestCategory(TestCategories.UnexpectedContext)]
+        [Description("This test case is designed to test whether server can handle NEGOTIATE with " +
+            "Smb 3.11 dialect, with SMB2_ENCRYPTION_CAPABILITIES and SMB2_COMPRESSION_CAPABILITIES Contexts and without SMB2_PREAUTH_INTEGRITY_CAPABILITIES Context.")]
+        public void Negotiate_SMB311_WithEncryptionAndCompressionContextsWithoutIntegrityContext()
+        {
+            if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send Negotiate request with dialect SMB 3.11, with SMB2_ENCRYPTION_CAPABILITIES and SMB2_COMPRESSION_CAPABILITIES context, " +
+                "without SMB2_PREAUTH_INTEGRITY_CAPABILITIES context.");
+            client.NegotiateWithContexts(
+                Packet_Header_Flags_Values.NONE,
+                Smb2Utility.GetDialects(DialectRevision.Smb311),
+                preauthHashAlgs: null,
+                encryptionAlgs: new EncryptionAlgorithm[] {
+                EncryptionAlgorithm.ENCRYPTION_AES128_GCM,
+                EncryptionAlgorithm.ENCRYPTION_AES128_CCM },
+                compressionAlgorithms: TestConfig.SupportedCompressionAlgorithmList.ToArray(),
                 checker: (Packet_Header header, NEGOTIATE_Response response) =>
                 {
                     BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify server fails the negotiate request with STATUS_INVALID_PARAMETER.");
@@ -384,10 +470,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             "Smb 3.11 dialect and with an invalid HashAlgorithm in SMB2_PREAUTH_INTEGRITY_CAPABILITIES Context.")]
         public void Negotiate_SMB311_InvalidHashAlgorithm()
         {
-            PreauthIntegrityHashID[] preauthHashAlgs = new PreauthIntegrityHashID[] { PreauthIntegrityHashID.HashAlgorithm_Invalid };
-
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
-                BaseTestSite.Assert.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+
+            PreauthIntegrityHashID[] preauthHashAlgs = new PreauthIntegrityHashID[] { PreauthIntegrityHashID.HashAlgorithm_Invalid };
 
             BaseTestSite.Log.Add(
                LogEntryKind.TestStep,
@@ -401,7 +487,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
                 {
                     BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify server fails the negotiate request with STATUS_SMB_NO_PREAUTH_INTEGRITY_HASH_OVERLAP.");
                     BaseTestSite.Assert.AreEqual(Smb2Status.STATUS_SMB_NO_PREAUTH_INTEGRITY_HASH_OVERLAP, header.Status,
-                        "[MS-SMB2] 3.3.5.4 If the SMB2_PREAUTH_INTEGRITY_CAPABILITIES HashAlgorithms array does not contain any hash algorithms " + 
+                        "[MS-SMB2] 3.3.5.4 If the SMB2_PREAUTH_INTEGRITY_CAPABILITIES HashAlgorithms array does not contain any hash algorithms " +
                         "that the server supports, then the server MUST fail the negotiate request with STATUS_SMB_NO_PREAUTH_INTEGRITY_HASH_OVERLAP (0xC05D0000).");
                 });
         }
@@ -414,11 +500,11 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             "Smb 3.11 dialect and with an invalid Cipher in SMB2_ENCRYPTION_CAPABILITIES Context.")]
         public void Negotiate_SMB311_InvalidCipher()
         {
-            EncryptionAlgorithm[] encryptionAlgs = new EncryptionAlgorithm[] { 
-                EncryptionAlgorithm.ENCRYPTION_INVALID };
-
             if (TestConfig.MaxSmbVersionSupported < DialectRevision.Smb311)
-                BaseTestSite.Assert.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured server max dialect is lower than 3.11.");
+
+            EncryptionAlgorithm[] encryptionAlgs = new EncryptionAlgorithm[] {
+                EncryptionAlgorithm.ENCRYPTION_INVALID };
 
             BaseTestSite.Log.Add(
                LogEntryKind.TestStep,
@@ -431,25 +517,221 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
                 checker: (Packet_Header header, NEGOTIATE_Response response) =>
                 {
                     BaseTestSite.Log.Add(LogEntryKind.TestStep, "Verify that server sets Connection.CipherId to 0 from the response.");
-                    BaseTestSite.Assert.AreEqual((EncryptionAlgorithm)0, client.SelectedCipherID, 
+                    BaseTestSite.Assert.AreEqual((EncryptionAlgorithm)0, client.SelectedCipherID,
                         "[MS-SMB2] 3.3.5.4 If the client and server have no common cipher, then the server must set Connection.CipherId to 0.");
                 });
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Bvt)]
+        [TestCategory(TestCategories.Smb311)]
+        [TestCategory(TestCategories.Negotiate)]
+        [Description("This test case is designed to test whether server can handle NEGOTIATE with supported compression algorithms in SMB2_COMPRESSION_CAPABILITIES context.")]
+        public void BVT_Negotiate_SMB311_CompressionEnabled()
+        {
+            CheckCompressionApplicability();
+
+            var compressionAlgorithms = TestConfig.SupportedCompressionAlgorithmList.ToArray();
+
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send NEGOTIATE request with SUT supported compression algorithms.");
+            NegotiateWithNegotiateContexts(
+                DialectRevision.Smb311,
+                new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 },
+                compressionAlgorithms: compressionAlgorithms,
+                checker: (Packet_Header header, NEGOTIATE_Response response) =>
+                {
+                    BaseTestSite.Assert.AreEqual(Smb2Status.STATUS_SUCCESS, header.Status, "SUT MUST return STATUS_SUCCESS if the negotiation finished successfully.");
+
+                    if (TestConfig.IsWindowsPlatform)
+                    {
+                        bool isExpectedWindowsCompressionContext = client.Smb2Client.CompressionInfo.CompressionIds.Length == 1 && client.Smb2Client.CompressionInfo.CompressionIds[0] == TestConfig.SupportedCompressionAlgorithmList[0];
+                        BaseTestSite.Assert.IsTrue(isExpectedWindowsCompressionContext, "Windows 10 v1903 and later and Windows Server v1903 and later only set CompressionAlgorithms to the first common algorithm supported by the client and server.");
+                    }
+                    else
+                    {
+                        bool isExpectedNonWindowsCompressionContext = Enumerable.SequenceEqual(client.Smb2Client.CompressionInfo.CompressionIds, TestConfig.SupportedCompressionAlgorithmList);
+                        BaseTestSite.Assert.IsTrue(isExpectedNonWindowsCompressionContext, "[MS-SMB2] section 3.3.5.4: Non-Windows implementation MUST set CompressionAlgorithms to the CompressionIds in request if they are all supported by SUT.");
+                    }
+                });
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Smb311)]
+        [TestCategory(TestCategories.Negotiate)]
+        [Description("This test case is designed to test whether server can handle NEGOTIATE with unsupported compression algorithms in SMB2_COMPRESSION_CAPABILITIES context.")]
+        public void Negotiate_SMB311_Compression_CompressionAlgorithmNotSupported()
+        {
+            CheckCompressionApplicability();
+
+            var unsupportedCompressionAlgorithms = new CompressionAlgorithm[] { CompressionAlgorithm.Unsupported };
+
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send NEGOTIATE request with SUT unsupported compression algorithms.");
+            NegotiateWithNegotiateContexts(
+                DialectRevision.Smb311,
+                new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 },
+                compressionAlgorithms: unsupportedCompressionAlgorithms,
+                checker: (Packet_Header header, NEGOTIATE_Response response) =>
+                {
+                    BaseTestSite.Assert.AreEqual(Smb2Status.STATUS_SUCCESS, header.Status, "SUT MUST return STATUS_SUCCESS if the negotiation finished successfully.");
+
+                    bool isExpectedCompressionContext = client.Smb2Client.CompressionInfo.CompressionIds.Length == 1 && client.Smb2Client.CompressionInfo.CompressionIds[0] == CompressionAlgorithm.NONE;
+
+                    BaseTestSite.Assert.IsTrue(
+                        isExpectedCompressionContext,
+                        "[MS-SMB2] section 3.3.5.4: If the server does not support any of the algorithms provided by the client, " +
+                        "the server MUST build an SMB2_COMPRESSION_CAPABILITIES negotiate response context with CompressionAlgorithmCount set to 1 and CompressionAlgorithms set to \"NONE\"."
+                        );
+                });
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Smb311)]
+        [TestCategory(TestCategories.Negotiate)]
+        [TestCategory(TestCategories.UnexpectedFields)]
+        [Description("This test case is designed to test whether server ignores SMB2_COMPRESSION_CAPABILITIES context when negotiate with SMB dialect less than 3.1.1.")]
+        public void Negotiate_SMB311_Compression_InvalidSmbDialect()
+        {
+            CheckCompressionApplicability();
+
+            var negotiateDialects = Smb2Utility.GetDialects(DialectRevision.Smb302);
+
+            var compressionAlgorithms = TestConfig.SupportedCompressionAlgorithmList.ToArray();
+
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send NEGOTIATE request with SMB dialects less than 3.1.1.");
+            client.NegotiateWithContexts(
+                Packet_Header_Flags_Values.NONE,
+                negotiateDialects,
+                preauthHashAlgs: null,
+                compressionAlgorithms: compressionAlgorithms,
+                checker: (Packet_Header header, NEGOTIATE_Response response) =>
+                {
+                    BaseTestSite.Assert.AreEqual(Smb2Status.STATUS_SUCCESS, header.Status, "SUT MUST return STATUS_SUCCESS if the negotiation finished successfully.");
+
+                    bool isExpectedCompressionContext = client.Smb2Client.CompressionInfo.CompressionIds.Length == 0;
+
+                    BaseTestSite.Assert.IsTrue(isExpectedCompressionContext, "SUT MUST ignore SMB2_COMPRESSION_CAPABILITIES if negotiated SMB dialect is less than 3.1.1.");
+
+                });
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Smb311)]
+        [TestCategory(TestCategories.Negotiate)]
+        [TestCategory(TestCategories.UnexpectedFields)]
+        [Description("This test case is designed to test whether server handle SMB2_COMPRESSION_CAPABILITIES context with invalid DataLength field when negotiate.")]
+        public void Negotiate_SMB311_Compression_CompressionContextInvalidDataLength()
+        {
+            CheckCompressionApplicability();
+
+            var compressionAlgorithms = TestConfig.SupportedCompressionAlgorithmList.ToArray();
+
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send NEGOTIATE request with invalid DataLength field, which is less than the size of SMB2_COMPRESSION_CAPABILITIES structure, in SMB2_COMPRESSION_CAPABILITIES context.");
+
+            Action<Smb2Packet> negotiatePacketModifier = packet =>
+            {
+                if (packet is Smb2NegotiateRequestPacket)
+                {
+                    var negotiateRequest = packet as Smb2NegotiateRequestPacket;
+
+                    // Modify DataLength to 4 which must be less than the size of SMB2_COMPRESSION_CAPABILITIES
+                    var compressionContext = negotiateRequest.NegotiateContext_COMPRESSION.Value;
+                    compressionContext.Header.DataLength = 4;
+
+                    negotiateRequest.NegotiateContext_COMPRESSION = compressionContext;
+                }
+            };
+
+            client.Smb2Client.PacketSending += negotiatePacketModifier;
+
+            NegotiateWithNegotiateContexts(
+                DialectRevision.Smb311,
+                new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 },
+                compressionAlgorithms: compressionAlgorithms,
+                checker: (Packet_Header header, NEGOTIATE_Response response) =>
+                {
+                    BaseTestSite.Assert.AreEqual(
+                        Smb2Status.STATUS_INVALID_PARAMETER,
+                        header.Status,
+                        "[MS-SMB2] section 3.3.5.4: The server MUST fail the negotiate request with STATUS_INVALID_PARAMETER, " +
+                        "if the DataLength of the negotiate context is less than the size of the SMB2_COMPRESSION_CAPABILITIES structure."
+                        );
+                });
+
+            client.Smb2Client.PacketSending -= negotiatePacketModifier;
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Smb311)]
+        [TestCategory(TestCategories.Negotiate)]
+        [TestCategory(TestCategories.UnexpectedFields)]
+        [Description("This test case is designed to test whether server handle SMB2_COMPRESSION_CAPABILITIES context with invalid CompressionAlgorithmCount field when negotiate.")]
+        public void Negotiate_SMB311_Compression_CompressionAlgorithmEmpty()
+        {
+            CheckCompressionApplicability();
+
+            var compressionAlgorithms = new CompressionAlgorithm[0];
+
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send NEGOTIATE request with invalid CompressionAlgorithmCount field, which equals to zero, in SMB2_COMPRESSION_CAPABILITIES.");
+            NegotiateWithNegotiateContexts(
+                DialectRevision.Smb311,
+                new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 },
+                compressionAlgorithms: compressionAlgorithms,
+                checker: (Packet_Header header, NEGOTIATE_Response response) =>
+                {
+                    BaseTestSite.Assert.AreEqual(Smb2Status.STATUS_INVALID_PARAMETER, header.Status, "[MS-SMB2] section 3.3.5.4: The server MUST fail the negotiate request with STATUS_INVALID_PARAMETER, if CompressionAlgorithmCount is equal to zero.");
+                });
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Smb311)]
+        [TestCategory(TestCategories.Negotiate)]
+        [TestCategory(TestCategories.Compatibility)]
+        [Description("This test case is designed to test whether server can ignore SMB2_NETNAME_NEGOTIATE_CONTEXT_ID context when negotiate.")]
+        public void Negotiate_SMB311_ContextID_NetName()
+        {
+            BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send NEGOTIATE request with SMB2_NETNAME_NEGOTIATE_CONTEXT_ID context.");
+
+            DialectRevision clientMaxDialectSupported = DialectRevision.Smb311;
+            PreauthIntegrityHashID[] preauthHashAlgs = new PreauthIntegrityHashID[] { PreauthIntegrityHashID.SHA_512 };
+            EncryptionAlgorithm[] encryptionAlgs = new EncryptionAlgorithm[] {
+                EncryptionAlgorithm.ENCRYPTION_AES128_GCM,
+                EncryptionAlgorithm.ENCRYPTION_AES128_CCM };
+
+            BaseTestSite.Log.Add(
+               LogEntryKind.TestStep,
+               "Send Negotiate request with dialect SMB 3.11, SMB2_PREAUTH_INTEGRITY_CAPABILITIES context and " +
+               "SMB2_ENCRYPTION_CAPABILITIES context and SMB2_NETNAME_NEGOTIATE_CONTEXT_ID context.");
+
+            NegotiateWithNegotiateContexts(
+                clientMaxDialectSupported,
+                preauthHashAlgs,
+                encryptionAlgs,
+                addNetNameContextId: true,
+                checker: (Packet_Header header, NEGOTIATE_Response response) =>
+                      {
+                          BaseTestSite.Assert.AreEqual(
+                             Smb2Status.STATUS_SUCCESS,
+                             header.Status,
+                             "[MS-SMB2] section 2.2.3.1.3: The SMB2_NETNAME_NEGOTIATE_CONTEXT_ID context is specified in an SMB2 NEGOTIATE request to indicate the server name the client connects to. The server MUST ignore this context. "
+                             );
+                      }
+                );
         }
         #endregion
 
         #region private methods
         private void NegotiateWithSpecificDialect(DialectRevision clientMaxDialectSupported)
         {
-            DialectRevision serverMaxDialectSupported = TestConfig.MaxSmbVersionSupported;
-
-            DialectRevision[] negotiateDialects = Smb2Utility.GetDialects(clientMaxDialectSupported);
-
             if (clientMaxDialectSupported > TestConfig.MaxSmbVersionClientSupported)
             {
-                BaseTestSite.Assert.Inconclusive("Stop to run this test case because the configured MaxSmbVersionClientSupported {0} is lower than {1}.", 
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured MaxSmbVersionClientSupported {0} is lower than {1}.",
                     TestConfig.MaxSmbVersionClientSupported,
                     clientMaxDialectSupported);
             }
+
+            DialectRevision serverMaxDialectSupported = TestConfig.MaxSmbVersionSupported;
+
+            DialectRevision[] negotiateDialects = Smb2Utility.GetDialects(clientMaxDialectSupported);
 
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Send Negotiate request with maximum dialect: {0}.", clientMaxDialectSupported);
             client.Negotiate(
@@ -474,32 +756,37 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             DialectRevision clientMaxDialectSupported,
             PreauthIntegrityHashID[] preauthHashAlgs,
             EncryptionAlgorithm[] encryptionAlgs = null,
+            CompressionAlgorithm[] compressionAlgorithms = null,
+            bool addNetNameContextId = false,
             ResponseChecker<NEGOTIATE_Response> checker = null)
         {
             // ensure clientMaxDialectSupported higher than 3.11
             if (clientMaxDialectSupported < DialectRevision.Smb311) clientMaxDialectSupported = DialectRevision.Smb311;
-            DialectRevision[] negotiateDialects = Smb2Utility.GetDialects(clientMaxDialectSupported);
-
             if (clientMaxDialectSupported > TestConfig.MaxSmbVersionClientSupported)
             {
-                BaseTestSite.Assert.Inconclusive("Stop to run this test case because the configured MaxSmbVersionClientSupported {0} is lower than {1}.",
+                BaseTestSite.Assume.Inconclusive("Stop to run this test case because the configured MaxSmbVersionClientSupported {0} is lower than {1}.",
                     TestConfig.MaxSmbVersionClientSupported,
                     clientMaxDialectSupported);
             }
+
+            DialectRevision[] negotiateDialects = Smb2Utility.GetDialects(clientMaxDialectSupported);
 
             status = client.NegotiateWithContexts(
                 Packet_Header_Flags_Values.NONE,
                 negotiateDialects,
                 preauthHashAlgs: preauthHashAlgs,
                 encryptionAlgs: encryptionAlgs,
+                compressionAlgorithms: compressionAlgorithms,
+                addNetNameContextId: addNetNameContextId,
                 checker: checker);
         }
 
         private void CheckNegotiateResponse(
-            Packet_Header header, 
+            Packet_Header header,
             NEGOTIATE_Response response,
             DialectRevision clientMaxDialectSupported,
-            EncryptionAlgorithm[] encryptionAlgs)
+            EncryptionAlgorithm[] encryptionAlgs,
+            bool checkCompression = false)
         {
             DialectRevision expectedDialect = clientMaxDialectSupported < TestConfig.MaxSmbVersionSupported
                         ? clientMaxDialectSupported : TestConfig.MaxSmbVersionSupported;
@@ -530,8 +817,22 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
                     BaseTestSite.Assert.AreEqual(
                         EncryptionAlgorithm.ENCRYPTION_NONE,
                         client.SelectedCipherID,
-                        "[MS-SMB2] if client doesn't present SMB2_ENCRYPTION_CAPABILITIES context in negotiate request, " + 
+                        "[MS-SMB2] if client doesn't present SMB2_ENCRYPTION_CAPABILITIES context in negotiate request, " +
                         "server should not present this context in negotiate response.");
+                }
+
+                if (checkCompression)
+                {
+                    if (TestConfig.IsWindowsPlatform)
+                    {
+                        bool isExpectedWindowsCompressionContext = client.Smb2Client.CompressionInfo.CompressionIds.Length == 1 && client.Smb2Client.CompressionInfo.CompressionIds[0] == TestConfig.SupportedCompressionAlgorithmList[0];
+                        BaseTestSite.Assert.IsTrue(isExpectedWindowsCompressionContext, "Windows 10 v1903 and later and Windows Server v1903 and later only set CompressionAlgorithms to the first common algorithm supported by the client and server.");
+                    }
+                    else
+                    {
+                        bool isExpectedNonWindowsCompressionContext = Enumerable.SequenceEqual(client.Smb2Client.CompressionInfo.CompressionIds, TestConfig.SupportedCompressionAlgorithmList);
+                        BaseTestSite.Assert.IsTrue(isExpectedNonWindowsCompressionContext, "[MS-SMB2] section 3.3.5.4: Non-Windows implementation MUST set CompressionAlgorithms to the CompressionIds in request if they are all supported by SUT.");
+                    }
                 }
             }
             else
@@ -617,6 +918,20 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2.TestSuite
             }
         }
 
+        private void CheckCompressionApplicability()
+        {
+            // Check platform
+            if (TestConfig.IsWindowsPlatform)
+            {
+                BaseTestSite.Assume.IsFalse(TestConfig.Platform < Platform.WindowsServerV1903, "Windows 10 v1809 operating system and prior, Windows Server v1809 operating system and prior, and Windows Server 2019 and prior do not support compression.");
+            }
+
+            // Check dialect
+            BaseTestSite.Assume.IsTrue(TestConfig.MaxSmbVersionSupported >= DialectRevision.Smb311, "The SMB 3.1.1 dialect introduces supporting the compression of messages between client and server.");
+
+            // Check SUT supported compression algorithms
+            TestConfig.CheckCompressionAlgorithm();
+        }
         #endregion
     }
 }

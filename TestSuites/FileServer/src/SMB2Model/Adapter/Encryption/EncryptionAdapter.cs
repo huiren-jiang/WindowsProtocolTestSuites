@@ -59,7 +59,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2Model.Adapter.Encryptio
                 MaxSmbVersionSupported = ModelUtility.GetModelDialectRevision(testConfig.MaxSmbVersionSupported, false),
                 IsGlobalEncryptDataEnabled = testConfig.IsGlobalEncryptDataEnabled,
                 IsGlobalRejectUnencryptedAccessEnabled = testConfig.IsGlobalRejectUnencryptedAccessEnabled,
-                Platform = testConfig.Platform
+                Platform = testConfig.Platform >= Platform.WindowsServer2016 ? Platform.WindowsServer2016 : testConfig.Platform
             };
 
             encryptionConfig = c;
@@ -68,7 +68,8 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.SMB2Model.Adapter.Encryptio
 
         public void SetupConnection(ModelDialectRevision maxSmbVersionClientSupported, ClientSupportsEncryptionType clientSupportsEncryptionType)
         {
-            testClient = new Smb2FunctionalClient(testConfig.Timeout, testConfig, this.Site);
+            // Set checkEncrypt to false to not check if the response from the server is actually encrypted.
+            testClient = new Smb2FunctionalClient(testConfig.Timeout, testConfig, this.Site, checkEncrypt : false);
             testClient.ConnectToServer(testConfig.UnderlyingTransport, testConfig.SutComputerName, testConfig.SutIPAddress);
             testClient.Smb2Client.Disconnected += new Action(OnServerDisconnected);
 

@@ -11,7 +11,10 @@ using Microsoft.Protocols.TestTools.StackSdk.Dtyp;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Cifs;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiService;
 using NamespaceSmb = Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb;
+using Smb2 = Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
 
 namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
 {
@@ -36,6 +39,8 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
         private SmbClient smbClient;
         private TimeSpan timeout;
         private UInt32 bufferSize;
+
+        private FSATestConfig testConfig;
 
         // The following suppression is adopted because this field will be used by reflection.
         [SuppressMessage("Microsoft.Performance", "CA1823:AvoidUnusedPrivateFields")]
@@ -172,11 +177,11 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
         {
             get
             {
-                return this.smbClient.Capability.IsUsePathThrough;
+                return this.smbClient.Capability.IsUsePassThrough;
             }
             set
             {
-                this.smbClient.Capability.IsUsePathThrough = value;
+                this.smbClient.Capability.IsUsePassThrough = value;
             }
         }
 
@@ -191,6 +196,11 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
         #endregion
 
         #region Adapter initialization and cleanup
+
+        public SmbTransportAdapter(FSATestConfig fsaTestConfig)
+        {
+            this.testConfig = fsaTestConfig;
+        }
 
         /// <summary>
         /// Initialize this adapter, will be called by PTF automatically
@@ -322,15 +332,15 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             if (!isWindows)
             {
                 SmbClientConnection connection = this.smbClient.Context.Connection;
-                connection.GssApi = new Microsoft.Protocols.TestTools.StackSdk.Security.Sspi.SspiClientSecurityContext(
-                    Microsoft.Protocols.TestTools.StackSdk.Security.Sspi.SecurityPackageType.Ntlm,
-                    new Microsoft.Protocols.TestTools.StackSdk.Security.Sspi.AccountCredential(
+                connection.GssApi = new SspiClientSecurityContext(
+                    SecurityPackageType.Ntlm,
+                    new AccountCredential(
                         this.domainName,
                         this.userName,
                         this.password),
                     "cifs/" + this.serverName,
-                    Microsoft.Protocols.TestTools.StackSdk.Security.Sspi.ClientSecurityContextAttribute.Connection,
-                    Microsoft.Protocols.TestTools.StackSdk.Security.Sspi.SecurityTargetDataRepresentation.SecurityNetworkDrep);
+                    ClientSecurityContextAttribute.Connection,
+                    SecurityTargetDataRepresentation.SecurityNetworkDrep);
                 this.smbClient.Context.AddOrUpdateConnection(connection);
             }
             packet = this.smbClient.CreateSecondSessionSetupRequest((ushort)this.sessionId, SmbSecurityPackage.NTLM);
@@ -460,6 +470,43 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
                 createAction = (uint)CreateAction.CREATED;
                 return (MessageStatus)response.SmbHeader.Status;
             }
+        }
+
+        /// <summary>
+        /// Create a new file or open an existing file.
+        /// </summary>
+        /// <param name="fileName">The name of the data file or directory to be created or opened</param>
+        /// <param name="fileAttribute">A bitmask for the open operation, as specified in [MS-SMB2] section 2.2.13</param>
+        /// <param name="desiredAccess">A bitmask for the open operation, as specified in [MS-SMB2] section 2.2.13.1</param>
+        /// <param name="shareAccess">A bitmask for the open operation, as specified in [MS-SMB2] section 2.2.13</param>
+        /// <param name="createOptions">A bitmask for the open operation, as specified in [MS-SMB2] section 2.2.13</param>
+        /// <param name="createDisposition">A bitmask for the open operation, as specified in [MS-SMB2] section 2.2.13</param>
+        /// <param name="createAction">A bitmask for the open operation, as specified in [MS-SMB2] section 2.2.13</param>
+        /// <param name="fileId">The fileId for the open.</param>
+        /// <param name="treeId">The treeId for the open.</param>
+        /// <param name="sessionId">The sessionId for the open.</param>
+        /// <returns>NTStatus code</returns>
+        /// Disable warning CA1800 because it will affect the implementation of Adapter
+        [SuppressMessage("Microsoft.Performance", "CA1800:DoNotCastUnnecessarily")]
+        public MessageStatus CreateFile(
+            string fileName,
+            UInt32 fileAttribute,
+            UInt32 desiredAccess,
+            UInt32 shareAccess,
+            UInt32 createOptions,
+            UInt32 createDisposition,
+            out UInt32 createAction,
+            out Smb2.FILEID fileId,
+            out uint treeId,
+            out ulong sessionId
+         )
+        {
+            fileId = Smb2.FILEID.Zero;
+            treeId = 0;
+            sessionId = 0;    
+            createAction = (uint)CreateAction.NULL;
+            return MessageStatus.SUCCESS;
+           
         }
 
         #endregion
@@ -619,6 +666,38 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
             }
         }
 
+        /// <summary>
+        /// Query an existing directory with specific file name pattern.
+        /// </summary>
+        /// <param name="fileId">The fileId for the open.</param>
+        /// <param name="treeId">The treeId for the open.</param>
+        /// <param name="sessionId">The sessionId for the open.</param>
+        /// <param name="fileInformationClass">The type of information to be queried, as specified in [MS-FSCC] section 2.4</param>
+        /// <param name="maxOutPutSize">The maximum number of bytes to return</param>
+        /// <param name="restartScan">If true, indicating the enumeration of the directory should be restarted</param>
+        /// <param name="returnSingleEntry">If true, indicate return an single entry of the query</param>
+        /// <param name="fileIndex">An index number from which to resume the enumeration</param>
+        /// <param name="fileNamePattern">A Unicode string containing the file name pattern to match. "* ?" must be treated as wildcards</param>
+        /// <param name="outBuffer">The query result</param>
+        /// <returns>NTStatus code</returns>
+        [SuppressMessage("Microsoft.Performance", "CA1800:DoNotCastUnnecessarily")]
+        public MessageStatus QueryDirectory(
+            Smb2.FILEID fileId,
+            uint treeId,
+            ulong sessionId,
+            byte fileInformationClass,
+            UInt32 maxOutPutSize,
+            bool restartScan,
+            bool returnSingleEntry,
+            uint fileIndex,
+            string fileNamePattern,
+            out byte[] outBuffer
+            )
+        {
+            //No implementation for SMBTransportadapter
+            outBuffer = null;
+            return MessageStatus.SUCCESS;            
+        }
         #endregion
 
         #region 3.1.5.6   Server Requests Flushing Cached Data
@@ -690,6 +769,8 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.FSA.Adapter
         [SuppressMessage("Microsoft.Performance", "CA1800:DoNotCastUnnecessarily")]
         public MessageStatus IOControl(UInt32 ctlCode, UInt32 maxOutBufferSize, byte[] inBuffer, out byte[] outBuffer)
         {
+            testConfig.CheckFSCTL(ctlCode);
+
             outBuffer = null;
             //Set isFlag to 0 to apply a share root handle as SMB described.
             SmbNtTransactIoctlRequestPacket packet = this.smbClient.CreateNTTransIOCtlRequest(this.fileId, true, 0, ctlCode, inBuffer);

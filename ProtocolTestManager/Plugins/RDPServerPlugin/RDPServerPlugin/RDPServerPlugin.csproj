@@ -74,11 +74,7 @@
     <Compile Include="DetectionResultControl.xaml.cs">
       <DependentUpon>DetectionResultControl.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Detector\RDPBCGRCapSet.cs" />
     <Compile Include="Detector\RDPDetector.cs" />
-    <Compile Include="Detector\SUTControlMessage.cs" />
-    <Compile Include="Detector\SUTControlMessageExRDP.cs" />
-    <Compile Include="Detector\TCPSUTControlTransport.cs" />
     <Compile Include="RDPValueDetector.cs" />
     <Compile Include="Types.cs" />
   </ItemGroup>
@@ -107,6 +103,10 @@
       <Project>{cfbafde2-f509-4ac8-817a-0c26c1b27653}</Project>
       <Name>Rdpedyc</Name>
     </ProjectReference>
+    <ProjectReference Include="..\..\..\..\ProtoSDK\MS-RDPELE\Rdpele.csproj">
+      <Project>{838d09c1-93d9-46ec-8cc7-3b747ccfc4e9}</Project>
+      <Name>Rdpele</Name>
+    </ProjectReference>
     <ProjectReference Include="..\..\..\..\ProtoSDK\MS-RDPEMT\Rdpemt.csproj">
       <Project>{9e44ed93-d10d-42e3-a8bf-ad1923859857}</Project>
       <Name>Rdpemt</Name>
@@ -133,9 +133,12 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="config.xml" />
+    <Content Include="config.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Resource Include="Docs\arrow_right.png" />
     <Resource Include="Docs\domain.png" />
+    <Content Include="Docs\configure.html" />
     <Content Include="Docs\index.html" />
     <Content Include="Docs\network.html" />
     <Resource Include="Docs\note.png" />

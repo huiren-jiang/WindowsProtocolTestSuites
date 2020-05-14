@@ -15,6 +15,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
     {
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify SUT can send fast-path update message correctly.")]
@@ -30,7 +31,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             //    Fast-Path Synchronize Event
             //    Fast-Path Unicode Keyboard Event
             //4. Test suite wait for 3 minutes, and verify each Server Fast-Path Update PDU received. The Server Fast-Path Update PDU may include:
-            //    Fast-Path Orders Update 
+            //    Fast-Path Orders Update
             //    Fast-Path Bitmap Update
             //    Fast-Path Palette Update
             //    Fast-Path Synchronize Update
@@ -44,21 +45,21 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             #region Test Code
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             string[] SVCNames = new string[] { RdpConstValue.SVCNAME_RDPEDYC };
-            rdpbcgrAdapter.EstablishRDPConnection(requestProtocol, SVCNames, CompressionType.PACKET_COMPR_TYPE_RDP61,
+            rdpbcgrAdapter.EstablishRDPConnection(testConfig.requestProtocol, SVCNames, CompressionType.PACKET_COMPR_TYPE_RDP61,
                 false, // Is reconnect
                 true,  // Is auto logon
                 supportFastPathInput:true,
                 supportFastPathOutput:true);
-            
+
             this.Site.Log.Add(LogEntryKind.Comment, "Send several Client Fast-Path Input Event PDUs.");
             rdpbcgrAdapter.GenerateFastPathInputs();
 
             this.Site.Log.Add(LogEntryKind.Comment, "Wait a period to receive and verify all fast-path update PDUs received ");
-            rdpbcgrAdapter.ExpectFastpathOutputs(timeout);
+            rdpbcgrAdapter.ExpectFastpathOutputs(testConfig.timeout);
 
             #endregion Test Code
         }

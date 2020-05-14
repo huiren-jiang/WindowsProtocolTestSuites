@@ -8,6 +8,7 @@ using System.IO;
 using System.Xml;
 using System.Diagnostics;
 using System.Reflection;
+using System.Web.Script.Serialization;
 
 namespace Microsoft.Protocols.TestManager.Kernel
 {
@@ -16,6 +17,7 @@ namespace Microsoft.Protocols.TestManager.Kernel
     /// </summary>
     public class Utility
     {
+        private Version ptmVersion;
         private TestSuiteFamilies testSuiteFamilies = null;
         private string testSuiteDir;
         private string installDir;
@@ -30,11 +32,14 @@ namespace Microsoft.Protocols.TestManager.Kernel
         private TestEngine testEngine = null;
         private int targetFilterIndex = -1;
         private int mappingFilterIndex = -1;
+        private DateTime sessionStartTime;
 
         public Utility()
         {
-            string exePath = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
+            ptmVersion = Assembly.GetEntryAssembly().GetName().Version;
+            string exePath = Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
             installDir = Path.GetFullPath(Path.Combine(exePath, ".."));
+            sessionStartTime = DateTime.Now;
         }
 
         /// <summary>
@@ -74,6 +79,17 @@ namespace Microsoft.Protocols.TestManager.Kernel
         /// <param name="testSuiteInfo">The information of a test suite</param>
         public void LoadTestSuiteConfig(TestSuiteInfo testSuiteInfo)
         {
+            // Test suite version must match PTM version
+            Version testSuiteVersion = new Version(testSuiteInfo.TestSuiteVersion);
+            if (ptmVersion < testSuiteVersion)
+            {
+                throw new Exception(String.Format(StringResource.PTMNeedUpgrade, ptmVersion, testSuiteVersion));
+            }
+            else if (ptmVersion > testSuiteVersion)
+            {
+                throw new Exception(String.Format(StringResource.TestSuiteNeedUpgrade, ptmVersion, testSuiteVersion));
+            }
+
             testSuiteDir = testSuiteInfo.TestSuiteFolder + "\\";
             try
             {
@@ -116,7 +132,21 @@ namespace Microsoft.Protocols.TestManager.Kernel
             if (args.Name.Contains("Microsoft.VisualStudio.QualityTools.UnitTestFramework"))
             {
                 string vstestPath = Path.GetDirectoryName(appConfig.VSTestPath);
-                var assembly = Assembly.LoadFrom(Path.Combine(vstestPath, "Microsoft.VisualStudio.QualityTools.UnitTestFramework.dll"));
+                string publicAssembliesPath = Path.Combine(vstestPath, @"..\..\..\PublicAssemblies");
+                var possiblePaths = new string[]
+                {
+                    vstestPath,
+                    publicAssembliesPath
+                };
+                string assemblyPath = possiblePaths
+                                        .Select(path => Path.Combine(path, "Microsoft.VisualStudio.QualityTools.UnitTestFramework.dll"))
+                                        .Where(path => File.Exists(path))
+                                        .FirstOrDefault(path => path != null);
+                if (assemblyPath == null)
+                {
+                    return null;
+                }
+                var assembly = Assembly.LoadFrom(assemblyPath);
                 return assembly;
             }
             return null;
@@ -180,13 +210,17 @@ namespace Microsoft.Protocols.TestManager.Kernel
 
             if (filter != null)
             {
-                Dictionary<string, List<Rule>> featureMappingTable = CreateFeatureMappingTable();
+                Dictionary<string, List<Rule>> reverseMappingTable;
+                Dictionary<string, List<Rule>> featureMappingTable = CreateFeatureMappingTable(out reverseMappingTable);
                 if (featureMappingTable != null)
                 {
                     RuleGroup targetFilterGroup = filter[targetFilterIndex];
                     RuleGroup mappingFilterGroup = filter[mappingFilterIndex];
                     targetFilterGroup.featureMappingTable = featureMappingTable;
                     targetFilterGroup.mappingRuleGroup = mappingFilterGroup;
+
+                    mappingFilterGroup.reverseFeatureMappingTable = reverseMappingTable;
+                    mappingFilterGroup.targetRuleGroup = targetFilterGroup;
                 }
             }
         }
@@ -381,15 +415,15 @@ namespace Microsoft.Protocols.TestManager.Kernel
                         r.Status = RuleSupportStatus.Selected;
                         break;
                     case Microsoft.Protocols.TestManager.Detector.RuleStatus.NotSupported:
-                        r.SelectStatus = RuleSelectStatus.NotSelected;
+                        r.SelectStatus = RuleSelectStatus.UnSelected;
                         r.Status = RuleSupportStatus.NotSupported;
                         break;
                     case Microsoft.Protocols.TestManager.Detector.RuleStatus.Unknown:
-                        r.SelectStatus = RuleSelectStatus.NotSelected;
+                        r.SelectStatus = RuleSelectStatus.UnSelected;
                         r.Status = RuleSupportStatus.Unknown;
                         break;
                     default:
-                        r.SelectStatus = RuleSelectStatus.NotSelected;
+                        r.SelectStatus = RuleSelectStatus.UnSelected;
                         r.Status = RuleSupportStatus.Default;
                         break;
                 }
@@ -517,11 +551,12 @@ namespace Microsoft.Protocols.TestManager.Kernel
         /// Create a feature mapping table
         /// </summary>
         /// <returns>A feature mapping table</returns>
-        private Dictionary<string, List<Rule>> CreateFeatureMappingTable()
+        private Dictionary<string, List<Rule>> CreateFeatureMappingTable(out Dictionary<string, List<Rule>> outReverseMappingTable)
         {
             if (targetFilterIndex == -1 ||
                 mappingFilterIndex == -1)
             {
+                outReverseMappingTable = null;
                 return null;
             }
             Dictionary<string, List<Rule>> featureMappingTable = new Dictionary<string, List<Rule>>();
@@ -529,6 +564,8 @@ namespace Microsoft.Protocols.TestManager.Kernel
             RuleGroup mappingFilterGroup = filter[mappingFilterIndex];
             Dictionary<string, Rule> mappingRuleTable = createRuleTableFromRuleGroup(mappingFilterGroup);
             Dictionary<string, Rule> targetRuleTable = createRuleTableFromRuleGroup(targetFilterGroup);
+
+            Dictionary<string, List<Rule>> reverseMappingTable = new Dictionary<string, List<Rule>>();
 
             List<TestCase> testCaseList = testSuite.TestCaseList;
             foreach (TestCase testCase in testCaseList)
@@ -556,12 +593,26 @@ namespace Microsoft.Protocols.TestManager.Kernel
                                 {
                                     featureMappingTable[target] = new List<Rule> { currentRule };
                                 }
+
+                                // Add item to reverse mapping table
+                                if (reverseMappingTable.ContainsKey(category))
+                                {
+                                    if (!reverseMappingTable[category].Contains(targetRuleTable[target]))
+                                    {
+                                        reverseMappingTable[category].Add(targetRuleTable[target]);
+                                    }
+                                }
+                                else
+                                {
+                                    reverseMappingTable[category] = new List<Rule> { targetRuleTable[target] };
+                                }
                             }
                         }
                         break;
                     }
                 }
             }
+            outReverseMappingTable = reverseMappingTable;
             return featureMappingTable;
         }
 
@@ -748,11 +799,11 @@ namespace Microsoft.Protocols.TestManager.Kernel
                             adapter.Type = AdapterType.Managed;
                         }
                         break;
-                    case "script":
+                    case "shell":
                         {
                             string scriptDir = xmlNode.Attributes["scriptdir"].Value;
-                            adapter.ScriptAdapter = new ScriptAdapterNode(name, adapter.FriendlyName, scriptDir);
-                            adapter.Type = AdapterType.Script;
+                            adapter.ShellAdapter = new ShellAdapterNode(name, adapter.FriendlyName, scriptDir);
+                            adapter.Type = AdapterType.Shell;
                         }
                         break;
                 }
@@ -762,6 +813,326 @@ namespace Microsoft.Protocols.TestManager.Kernel
         #endregion
 
         #region Save & Load settings
+        /// <summary>
+        /// Upgrade the saved profile if needed.
+        /// </summary>
+        /// <param name="filename">File name of the saved profile</param>
+        /// <param name="newFilename">File name of the newly upgraded profile</param>
+        /// <returns>Return true when the file is upgraded, false when no need to upgrade the profile.</returns>
+        public bool TryUpgradeProfileSettings(string filename, out string newFilename)
+        {
+            newFilename = null;
+
+            // 1. Check whether the profile is created in an old version
+            if (!NeedUpgradeProfile(filename))
+            {
+                return false;
+            }
+
+            // 2. Set the new profile name
+            newFilename = GenerateNewProfileName(filename);
+
+            // 3. Create the new ptm file
+            using (ProfileUtil oldProfile = ProfileUtil.LoadProfile(filename))
+            using (ProfileUtil newProfile = ProfileUtil.CreateProfile(newFilename, appConfig.TestSuiteName, appConfig.TestSuiteVersion))
+            {
+                // Copy profile and playlist
+                ProfileUtil.CopyStream(oldProfile.ProfileStream, newProfile.ProfileStream);
+                ProfileUtil.CopyStream(oldProfile.PlaylistStream, newProfile.PlaylistStream);
+
+                // Create a temp folder to save ptfconfig files
+                string tmpDir = Path.Combine(Path.GetTempPath(), $"PTM-{Guid.NewGuid()}");
+                Directory.CreateDirectory(tmpDir);
+                oldProfile.SavePtfCfgTo(tmpDir);
+
+                MergeWithDefaultPtfConfig(tmpDir);
+                foreach (string ptfconfig in Directory.GetFiles(tmpDir))
+                {
+                    newProfile.AddPtfCfg(ptfconfig);
+                }
+
+                Directory.Delete(tmpDir, true);
+            }
+
+            return true;
+        }
+
+        private bool NeedUpgradeProfile(string filename)
+        {
+            using (ProfileUtil profile = ProfileUtil.LoadProfile(filename))
+            {
+                if (profile.Info == null)
+                {
+                    throw new InvalidDataException(StringResource.InvalidProfile);
+                }
+
+                if (profile.Info.TestSuiteName != appConfig.TestSuiteName)
+                {
+                    throw new Exception(StringResource.ProfileNotMatchError);
+                }
+
+                Version profileVersion = new Version(profile.Info.Version);
+                Version testSuiteVersion = new Version(appConfig.TestSuiteVersion);
+
+                if (profileVersion > testSuiteVersion)
+                {
+                    throw new ArgumentException(StringResource.ProfileNewerError);
+                }
+                else if (profileVersion < testSuiteVersion)
+                {
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+        }
+
+        private string GenerateNewProfileName(string filename)
+        {
+            string fullpath = Path.GetFullPath(filename);
+            string dirpath = Path.GetDirectoryName(fullpath);
+            string testFilename = $"{Path.GetFileNameWithoutExtension(fullpath)}-{appConfig.TestSuiteVersion}";
+
+            string newFilename = Path.Combine(dirpath, $"{testFilename}.ptm");
+            if (File.Exists(newFilename))
+            {
+                int i = 1;
+                while (true)
+                {
+                    newFilename = Path.Combine(dirpath, $"{testFilename}-{i}.ptm");
+                    if (File.Exists(newFilename))
+                    {
+                        i++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+            return newFilename;
+        }
+
+        private void MergeWithDefaultPtfConfig(string tmpPtfconfigDir)
+        {
+            string[] oldPtfConfigs = Directory.GetFiles(tmpPtfconfigDir).Select(file => Path.GetFileName(file)).ToArray();
+            string[] actualPtfConfigs = ProfileUtil.PtfConfigFilesByTestSuite[appConfig.TestSuiteName];
+
+            // Delete old ptfconfig which does not exist in new version of test suite
+            foreach (string deprecatedPtfConfig in oldPtfConfigs.Except(actualPtfConfigs))
+            {
+                File.Delete(Path.Combine(tmpPtfconfigDir, deprecatedPtfConfig));
+            }
+
+            // Add ptfconfig which are not included in the old profile
+            foreach (string newPtfConfig in actualPtfConfigs.Except(oldPtfConfigs))
+            {
+                string newPtfConfigPath = Path.Combine(tmpPtfconfigDir, newPtfConfig);
+                using (StreamWriter sw = File.CreateText(newPtfConfigPath))
+                {
+                    sw.Write(ProfileUtil.DefaultPtfConfigContent[newPtfConfig]);
+                }
+
+                // Set all properties value to empty
+                Queue<XmlNode> nodes = new Queue<XmlNode>(); // a temp queue to do BFS
+
+                string nsPrefix = "tc";
+                XmlNamespaceManager nsmgr = new XmlNamespaceManager(new NameTable());
+                nsmgr.AddNamespace(nsPrefix, StringResource.DefaultNamespace);
+
+                XmlDocument ptfConfigDoc = new XmlDocument();
+                ptfConfigDoc.Load(newPtfConfigPath);
+
+                XmlNode propertyRoot = ptfConfigDoc.DocumentElement.SelectSingleNode($"{nsPrefix}:Properties", nsmgr);
+                nodes.Enqueue(propertyRoot);
+                while (nodes.Count() > 0)
+                {
+                    XmlNode node = nodes.Dequeue();
+                    if (node.Name == "Property")
+                    {
+                        node.Attributes["value"].Value = "";
+                    }
+                    else if (node.Name == "Group" || node.Name == "Properties")
+                    {
+                        foreach (XmlNode child in node.ChildNodes)
+                        {
+                            if (child.NodeType == XmlNodeType.Element)
+                            {
+                                nodes.Enqueue(child);
+                            }
+                        }
+                    }
+                }
+
+                ptfConfigDoc.Save(newPtfConfigPath);
+            }
+
+            // Upgrade old ptfconfig files
+            foreach (string ptfConfig in actualPtfConfigs.Intersect(oldPtfConfigs))
+            {
+                string filepath = Path.Combine(tmpPtfconfigDir, ptfConfig);
+                Queue<XmlNode> nodes = new Queue<XmlNode>(); // a temp queue to do BFS
+
+                string nsPrefix = "tc";
+                XmlNamespaceManager nsmgr = new XmlNamespaceManager(new NameTable());
+                nsmgr.AddNamespace(nsPrefix, StringResource.DefaultNamespace);
+
+                XmlDocument ptfConfigDoc = new XmlDocument();
+                ptfConfigDoc.Load(filepath);
+
+                XmlDocument defaultPtfConfigDoc = new XmlDocument();
+                defaultPtfConfigDoc.LoadXml(ProfileUtil.DefaultPtfConfigContent[ptfConfig]);
+
+                // Do BFS to remove deprecated properties in ptfconfig files and update description/choice/type of property
+                XmlNode propertyRoot = ptfConfigDoc.DocumentElement.SelectSingleNode($"{nsPrefix}:Properties", nsmgr);
+                nodes.Enqueue(propertyRoot);
+                while (nodes.Count() > 0)
+                {
+                    XmlNode node = nodes.Dequeue();
+                    if (node.Name == "Property")
+                    {
+                        string xpathToProperty = GetXPathToNode(node, nsPrefix);
+                        XmlNode nodeInDefaultPtfConfig = defaultPtfConfigDoc.DocumentElement.SelectSingleNode(xpathToProperty, nsmgr);
+                        if (nodeInDefaultPtfConfig == null)
+                        {
+                            // Remove deprecated property
+                            node.ParentNode.RemoveChild(node);
+                        }
+                        else
+                        {
+                            // Update description/choice/type of a property
+                            while (node.ChildNodes.Count > 0)
+                            {
+                                node.RemoveChild(node.FirstChild);
+                            }
+                            foreach (XmlNode defaultChildNode in nodeInDefaultPtfConfig.ChildNodes)
+                            {
+                                if (defaultChildNode.NodeType == XmlNodeType.Element)
+                                {
+                                    string nodeName = defaultChildNode.Name;
+                                    XmlElement childNode = ptfConfigDoc.CreateElement(nodeName, StringResource.DefaultNamespace);
+                                    childNode.InnerXml = defaultChildNode.InnerXml;
+                                    node.AppendChild(childNode);
+                                }
+                            }
+                        }
+                    }
+                    else if (node.Name == "Group")
+                    {
+                        string xpathToGroup = GetXPathToNode(node, nsPrefix);
+                        if (defaultPtfConfigDoc.DocumentElement.SelectSingleNode(xpathToGroup, nsmgr) == null)
+                        {
+                            // Remove deprecated group
+                            node.ParentNode.RemoveChild(node);
+                        }
+                        else
+                        {
+                            foreach (XmlNode child in node.ChildNodes)
+                            {
+                                if (child.NodeType == XmlNodeType.Element)
+                                {
+                                    nodes.Enqueue(child);
+                                }
+                            }
+                        }
+                    }
+                    else if (node.Name == "Properties")
+                    {
+                        foreach (XmlNode child in node.ChildNodes)
+                        {
+                            if (child.NodeType == XmlNodeType.Element)
+                            {
+                                nodes.Enqueue(child);
+                            }
+                        }
+                    }
+                }
+
+                propertyRoot = defaultPtfConfigDoc.DocumentElement.SelectSingleNode("tc:Properties", nsmgr);
+                nodes.Enqueue(propertyRoot);
+                // Do BFS to add new properties to ptfconfig files
+                while (nodes.Count() > 0)
+                {
+                    XmlNode node = nodes.Dequeue();
+                    if (node.Name == "Property")
+                    {
+                        string xpathToProperty = GetXPathToNode(node, nsPrefix);
+                        if (ptfConfigDoc.DocumentElement.SelectSingleNode(xpathToProperty, nsmgr) == null)
+                        {
+                            // Add new property
+                            string xpathToParentNode = GetXPathToNode(node.ParentNode, nsPrefix);
+                            XmlElement propertyNode = ptfConfigDoc.CreateElement("Property", StringResource.DefaultNamespace);
+                            propertyNode.SetAttribute("name", node.Attributes["name"].Value);
+                            propertyNode.SetAttribute("value", "");
+                            foreach (XmlNode child in node.ChildNodes)
+                            {
+                                if (child.NodeType == XmlNodeType.Element)
+                                {
+                                    string nodeName = child.Name;
+                                    XmlElement childNode = ptfConfigDoc.CreateElement(nodeName, StringResource.DefaultNamespace);
+                                    childNode.InnerXml = child.InnerXml;
+                                    propertyNode.AppendChild(childNode);
+                                }
+                            }
+                            ptfConfigDoc.DocumentElement.SelectSingleNode(xpathToParentNode, nsmgr).AppendChild(propertyNode);
+                        }
+                    }
+                    else if (node.Name == "Group")
+                    {
+                        string xpathToGroup = GetXPathToNode(node, nsPrefix);
+                        if (ptfConfigDoc.DocumentElement.SelectSingleNode(xpathToGroup, nsmgr) == null)
+                        {
+                            // Add new group
+                            string xpathToParentNode = GetXPathToNode(node.ParentNode, nsPrefix);
+                            XmlElement groupNode = ptfConfigDoc.CreateElement("Group", StringResource.DefaultNamespace);
+                            groupNode.SetAttribute("name", node.Attributes["name"].Value);
+                            ptfConfigDoc.DocumentElement.SelectSingleNode(xpathToParentNode, nsmgr).AppendChild(groupNode);
+                        }
+
+                        foreach (XmlNode child in node.ChildNodes)
+                        {
+                            if (child.NodeType == XmlNodeType.Element)
+                            {
+                                nodes.Enqueue(child);
+                            }
+                        }
+                    }
+                    else if (node.Name == "Properties")
+                    {
+                        foreach (XmlNode child in node.ChildNodes)
+                        {
+                            if (child.NodeType == XmlNodeType.Element)
+                            {
+                                nodes.Enqueue(child);
+                            }
+                        }
+                    }
+                }
+                ptfConfigDoc.Save(filepath);
+            }
+        }
+
+        private string GetXPathToNode(XmlNode node, string ns)
+        {
+            string[] validNodeName = { "Group", "Property", "Properties" };
+            if (!validNodeName.Contains(node.Name))
+            {
+                throw new ArgumentException();
+            }
+
+            if (node.Name == "Properties")
+            {
+                return $"{ns}:{node.Name}";
+            }
+            else
+            {
+                string nameAttr = node.Attributes["name"].Value;
+                return $"{GetXPathToNode(node.ParentNode, ns)}/{ns}:{node.Name}[@name='{nameAttr}']";
+            }
+        }
+
         /// <summary>
         /// Loads the configurations from a saved profile.
         /// </summary>
@@ -838,6 +1209,7 @@ namespace Microsoft.Protocols.TestManager.Kernel
                 TestAssemblies = appConfig.TestSuiteAssembly,
                 TestSetting = appConfig.TestSetting,
                 PipeName = appConfig.PipeName,
+                ResultOutputFolder = String.Format("{0}-{1}", appConfig.TestSuiteName, sessionStartTime.ToString("yyyy-MM-dd-HH-mm-ss")),
             };
             testEngine.InitializeLogger(selectedCases);
         }
@@ -1031,58 +1403,21 @@ namespace Microsoft.Protocols.TestManager.Kernel
         }
 
         /// <summary>
-        /// Generates plain text case list.
+        /// Get a text case list of selected result.
         /// </summary>
         /// <param name="passed">Include passed test cases</param>
         /// <param name="failed">Include failed test cases</param>
         /// <param name="inconclusive">Include inconclusive test cases</param>
         /// <param name="notrun">Include not run test cases</param>
         /// <returns>A list of CaseListItem</returns>
-        public List<CaseListItem> GenerateTextCaseListItems(bool passed, bool failed, bool inconclusive, bool notrun)
+        public List<TestCase> SelectTestCases(bool passed, bool failed, bool inconclusive, bool notrun)
         {
-            List<CaseListItem> items = new List<CaseListItem>();
-            foreach (var i in selectedCases)
-            {
-                if (i.Status == TestCaseStatus.Passed && passed ||
-                    i.Status == TestCaseStatus.Failed && failed ||
-                    i.Status == TestCaseStatus.NotRun && notrun ||
-                    i.Status == TestCaseStatus.Other && inconclusive)
-                {
-                    items.Add(new CaseListItem(i.Name, i.Status));
-                }
-            }
-            return items;
-        }
-
-        /// <summary>
-        /// The way of sorting items in the test case list
-        /// </summary>
-        public enum SortBy { Name, Outcome };
-
-        /// <summary>
-        /// Convert the list to plain text report
-        /// </summary>
-        /// <param name="items">Case list</param>
-        /// <param name="showOutcome">shows test case outcome in the list</param>
-        /// <param name="sortby">The way of sorting items in the test case list</param>
-        /// <param name="separator">The style of the text file</param>
-        /// <returns>Plain text report</returns>
-        public static string GeneratePlainTextReport(List<CaseListItem> items, bool showOutcome, SortBy sortby, CaseListItem.Separator separator)
-        {
-            if (sortby == SortBy.Name)
-            {
-                items.Sort((x, y) => { return string.Compare(x.Name, y.Name); });
-            }
-            else
-            {
-                items.Sort((x, y) => { return string.Compare(x.Outcome, y.Outcome); });
-            }
-            StringBuilder sb = new StringBuilder();
-            foreach (var i in items)
-            {
-                sb.AppendLine(i.FormatText(showOutcome, separator));
-            }
-            return sb.ToString();
+            return selectedCases.Where(c =>
+                c.Status == TestCaseStatus.Passed && passed ||
+                c.Status == TestCaseStatus.Failed && failed ||
+                c.Status == TestCaseStatus.NotRun && notrun ||
+                c.Status == TestCaseStatus.Other && inconclusive
+            ).ToList();
         }
 
         #endregion
@@ -1092,7 +1427,8 @@ namespace Microsoft.Protocols.TestManager.Kernel
         /// Log exception detail to Protocol Test Manager folder under Application Data.
         /// </summary>
         /// <param name="exception">An exception list.</param>
-        public static void LogException(List<Exception> exception)
+        /// <returns>Path to the error log generated.</returns>
+        public static string LogException(List<Exception> exception)
         {
             string logName = string.Format("Exception_{0}.log", DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff"));
             string logFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Protocol Test Manager");
@@ -1111,6 +1447,8 @@ namespace Microsoft.Protocols.TestManager.Kernel
                     errorWriter.WriteLine("Error Detail: {0}", e.ToString());
                 }
             }
+
+            return errorLog;
         }
         #endregion
 
@@ -1127,20 +1465,54 @@ namespace Microsoft.Protocols.TestManager.Kernel
             }
         }
 
+        private static string ReadFileWithRetry(string filePath, int timeoutInSecond = 10)
+        {
+            var time = Stopwatch.StartNew();
+            while (time.ElapsedMilliseconds < timeoutInSecond * 1000)
+            {
+                try
+                {
+                    return File.ReadAllText(filePath);
+                }
+                catch (IOException e)
+                {
+                }
+            }
+
+            throw new TimeoutException(String.Format("Failed to read {0} within {1}s.", filePath, timeoutInSecond));
+        }
+
         /// <summary>
-        /// Parse the file content to get the case status
-        /// Result format in file: "Result":"Result: Passed"
+        /// Parse the file content to get the case status and detail
         /// </summary>
-        public static bool ParseFileGetStatus(string filePath, out TestCaseStatus status)
+        public static bool ParseFileGetStatus(string filePath, out TestCaseStatus status, out TestCaseDetail detail)
         {
             status = TestCaseStatus.NotRun;
+            detail = null;
 
-            string content = File.ReadAllText(filePath);
-            int startIndex = content.IndexOf(AppConfig.ResultKeyword);
-            startIndex += AppConfig.ResultKeyword.Length;
-            int endIndex = content.IndexOf("\"", startIndex);
-            string statusStr = content.Substring(startIndex, endIndex - startIndex);
-            switch (statusStr)
+            // The file may be opened exclusively by vstest.console.exe. Retry opening here
+            // to wait for vstest.console.exe writing logs.
+            string content = ReadFileWithRetry(filePath);
+
+            var detailLine = content.Split(new char[] { '\r', '\n' }).Where(l => l.StartsWith(AppConfig.DetailKeyword));
+            string detailStr;
+            if (detailLine.Count() == 0)
+            {
+                return false;
+            }
+            else
+            {
+                detailStr = detailLine.First();
+            }
+
+            int startIndex = AppConfig.DetailKeyword.Length;
+            int endIndex = detailStr.Length - 1;
+            string detailJson = detailStr.Substring(startIndex, endIndex - startIndex);
+
+            JavaScriptSerializer serializer = new JavaScriptSerializer() { MaxJsonLength = 32 * 1024 * 1024 };
+            detail = serializer.Deserialize<TestCaseDetail>(detailJson);
+
+            switch (detail.Result)
             {
                 case AppConfig.HtmlLogStatusPassed:
                     status = TestCaseStatus.Passed;
@@ -1157,50 +1529,6 @@ namespace Microsoft.Protocols.TestManager.Kernel
             }
 
             return true;
-        }
-    }
-
-    /// <summary>
-    /// Items for the plain text report
-    /// </summary>
-    public class CaseListItem
-    {
-        /// <summary>
-        /// The separator in the case list
-        /// </summary>
-        public enum Separator { Space, Comma };
-
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="name">Name of the test case</param>
-        /// <param name="status">The status of the test case</param>
-        public CaseListItem(string name, TestCaseStatus status)
-        {
-            Name = name;
-            Outcome = status == TestCaseStatus.Other ? "Inconclusive" : status.ToString();
-        }
-        /// <summary>
-        /// The outcome of the test case
-        /// </summary>
-        public string Outcome;
-
-        /// <summary>
-        /// The name of the test case
-        /// </summary>
-        public string Name;
-
-        /// <summary>
-        /// Generates a line in the plain text case list.
-        /// </summary>
-        /// <param name="showOutcome">Shows the outcome</param>
-        /// <param name="separator">The separator</param>
-        /// <returns>An item in the report</returns>
-        public string FormatText(bool showOutcome, Separator separator)
-        {
-            if (!showOutcome) return Name;
-            if (separator == Separator.Space) return string.Format("{0} {1}", Outcome, Name);
-            return string.Format("{0},{1}", Outcome, Name);
         }
     }
 }

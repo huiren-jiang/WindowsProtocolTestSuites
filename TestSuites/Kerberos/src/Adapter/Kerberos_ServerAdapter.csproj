@@ -42,9 +42,6 @@
     <Reference Include="Microsoft.Protocols.TestTools.VSTS">
       <SpecificVersion>False</SpecificVersion>
     </Reference>
-    <Reference Include="Microsoft.Xrt.Runtime, Version=2.2.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=x86">
-      <SpecificVersion>True</SpecificVersion>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.DirectoryServices" />
@@ -78,6 +75,8 @@
   <ItemGroup>
     <Content Include="IClientControlAdapter\ClearTrustRealmEncType.ps1" />
     <Content Include="IClientControlAdapter\SetTrustRealmEncTypeAsAes.ps1" />
+    <Content Include="IClientControlAdapter\SetSupportedEncryptionTypesAsRc4.ps1" />
+    <Content Include="IClientControlAdapter\RestoreSupportedEncryptionTypes.ps1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\ProtoSDK\Asn1Base\Asn1Base.csproj">
@@ -112,9 +111,9 @@
       <Project>{c7f08825-d3c9-4ddd-9ba3-06733b1abe36}</Project>
       <Name>Smb2</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\..\..\ProtoSDK\Sspi\Sspi.csproj">
-      <Project>{d0cb354b-2cd3-49c1-8eca-2f6ebadbccee}</Project>
-      <Name>Sspi</Name>
+    <ProjectReference Include="..\..\..\..\ProtoSDK\SspiLib\SspiLib.csproj">
+      <Project>{e64bf20f-11d2-49f6-a25b-f4378ab38180}</Project>
+      <Name>SspiLib</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />

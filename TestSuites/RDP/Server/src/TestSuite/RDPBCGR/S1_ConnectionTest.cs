@@ -8,6 +8,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Protocols.TestTools;
 using Microsoft.Protocols.TestTools.StackSdk;
 using Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr;
+using Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpele;
 
 namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 {
@@ -15,6 +16,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
     {
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify that RDP server can correctly process Client X.224 Connection Request PDU and response a correct Server X.224 Connection Confirm PDU")]
@@ -24,36 +26,40 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             // 1. Establish transport connection with RDP Server (SUT)
             // 2. Send a Client X.224 Connection Request PDU to SUT.
             // 3. Waite for Server X.224 Connection Confirm PDU with RDP_NEG_RSP structure from SUT.
-            // 4. Verify the received Server X.224 Connection Confirm PDU. 
+            // 4. Verify the received Server X.224 Connection Confirm PDU.
             #endregion Test Steps
 
             #region Test Code
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());            
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU with all security protocols supported to SUT.");
-            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, 
-                requestedProtocols_Values.PROTOCOL_RDP_FLAG| requestedProtocols_Values.PROTOCOL_SSL_FLAG | requestedProtocols_Values.PROTOCOL_HYBRID_FLAG | requestedProtocols_Values.PROTOCOL_HYBRID_EX);
+            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, testConfig.requestProtocol);
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server X224 Connection Confirm with RDP Negotiation Response.");            
-            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(timeout);
+            this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server X224 Connection Confirm with RDP Negotiation Response.");
+            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(testConfig.timeout);
             if (confirmPdu == null)
             {
                 this.Site.Log.Add(LogEntryKind.Comment, "Timeout when receiving Server X224 Connection Confirm with RDP Negotiation Response, try to receive Server X.224 Connection Confirm PDU with RDP Negotiation Failure");
-                Server_X_224_Negotiate_Failure_Pdu negotiateFailurePdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Negotiate_Failure_Pdu>(timeout);
+                Server_X_224_Negotiate_Failure_Pdu negotiateFailurePdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Negotiate_Failure_Pdu>(testConfig.timeout);
                 this.Site.Assert.IsNotNull(negotiateFailurePdu, "RDP Server MUST response a Server X224 Connection Confirm PDP after receiving a Client X224 Connection Request PDU.");
-                    
+
                 if (negotiateFailurePdu.rdpNegFailure.failureCode == failureCode_Values.SSL_NOT_ALLOWED_BY_SERVER)
                 {
                     this.Site.Log.Add(LogEntryKind.Comment, "Received a Server X.224 Connection Confirm PDU with RDP Negotiation Failure, whose failureCode field is SSL_NOT_ALLOWED_BY_SERVER. Reconnect to the RDP Server and send Client X.224 Connection Request PDU only support RDP protocol.");
                     rdpbcgrAdapter.Disconnect();
-                    rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
-                    rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, requestedProtocols_Values.PROTOCOL_RDP_FLAG);
-                    this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server X224 Connection Confirm with RDP Negotiation Response.");  
-                    confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(timeout);
+
+                    testConfig.transportProtocol = EncryptedProtocol.Rdp;
+
+                    rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
+
+                    testConfig.requestProtocol = requestedProtocols_Values.PROTOCOL_RDP_FLAG;
+
+                    rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, testConfig.requestProtocol);
+                    this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server X224 Connection Confirm with RDP Negotiation Response.");
+                    confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(testConfig.timeout);
                     this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server X224 Connection Confirm PDP after receiving a Client X224 Connection Request PDU.");
-                    
                 }
                 else
                 {
@@ -62,38 +68,38 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             }
 
-            
             #endregion Test Code
         }
 
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify that the SUT can process the valid Client MCS Connect Initial PDU with GCC Conference Create Request correctly and response a valid Server MCS Connect Response PDU with GCC Conference Create Response.")]
         public void S1_Connection_BasicSettingExchange_PositiveTest()
         {
             #region Test Steps
-            // 1. Initiate an RDP connection to RDP server (SUT) and complete the Connection Initiation phase. 
-            // 2. Test Suite continues the connection sequence by sending a valid Client MCS Connect Initial PDU with GCC Conference Create Request.  
+            // 1. Initiate an RDP connection to RDP server (SUT) and complete the Connection Initiation phase.
+            // 2. Test Suite continues the connection sequence by sending a valid Client MCS Connect Initial PDU with GCC Conference Create Request.
             // 3. The test suite expect a Server MCS Connect Response PDU with GCC Conference Create Response.
             // 4. The test suite verifies the received Server MCS Connect Response PDU with GCC Conference Create Response.
             #endregion Test Steps
 
             #region Test Code
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             #region Connection Initiation
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU to SUT, supported security protocol is {0}.", requestProtocol.ToString());
-            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, requestProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU to SUT, supported security protocol is {0}.", testConfig.requestProtocol.ToString());
+            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, testConfig.requestProtocol);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server X224 Connection Confirm.");
-            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(timeout);
+            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server X224 Connection Confirm PDU after receiving a Client X224 Connection Request PDU.");
-            
+
             #endregion Connection Initiation
 
             string[] SVCNames = new string[] { RdpConstValue.SVCNAME_RDPEDYC };
@@ -103,14 +109,15 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             rdpbcgrAdapter.SendClientMCSConnectInitialPDU(NegativeType.None, SVCNames, false, false, false, supportMultitransportReliable, supportMultitransportLossy, false);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server MCS Connect Response PDU with GCC Conference Create Response.");
-            Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response response = rdpbcgrAdapter.ExpectPacket<Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response>(timeout);
+            Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response response = rdpbcgrAdapter.ExpectPacket<Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response>(testConfig.timeout);
             this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server MCS Connect Response after receiving a Client MCS Connect Initial PDU.");
-            
+
             #endregion Test Code
         }
 
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify that SUT can process Channel Connection phase correctly.")]
@@ -128,16 +135,16 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             #region Test Code
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             #region Connection Initiation
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU to SUT, supported security protocol is {0}.", requestProtocol.ToString());
-            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, requestProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU to SUT, supported security protocol is {0}.", testConfig.requestProtocol.ToString());
+            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, testConfig.requestProtocol);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server X224 Connection Confirm.");
-            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(timeout);
+            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server X224 Connection Confirm PDU after receiving a Client X224 Connection Request PDU.");
 
             #endregion Connection Initiation
@@ -151,9 +158,9 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             rdpbcgrAdapter.SendClientMCSConnectInitialPDU(NegativeType.None, SVCNames, false, false, false, supportMultitransportReliable, supportMultitransportLossy, false);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server MCS Connect Response PDU with GCC Conference Create Response.");
-            Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response response = rdpbcgrAdapter.ExpectPacket<Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response>(timeout);
+            Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response response = rdpbcgrAdapter.ExpectPacket<Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response>(testConfig.timeout);
             this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server MCS Connect Response after receiving a Client MCS Connect Initial PDU.");
-            
+
             #endregion Basic Setting Exchange
 
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client MCS Erect Domain Request PDU to SUT.");
@@ -163,7 +170,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             rdpbcgrAdapter.SendClientMCSAttachUserRequest(NegativeType.None);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server MCS Attach User Confirm PDU.");
-            Server_MCS_Attach_User_Confirm_Pdu attachuserConfirm = rdpbcgrAdapter.ExpectPacket<Server_MCS_Attach_User_Confirm_Pdu>(timeout);
+            Server_MCS_Attach_User_Confirm_Pdu attachuserConfirm = rdpbcgrAdapter.ExpectPacket<Server_MCS_Attach_User_Confirm_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(attachuserConfirm, "RDP Server MUST response a Server MCS Attach User Confirm PDU after receiving a Client MCS Attach User Request PDU.");
 
             this.Site.Log.Add(LogEntryKind.Comment, "The test suite proceeds to join the user channel, the input/output (I/O) channel, and all of the static virtual channels.");
@@ -174,6 +181,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify SUT can process RDP Security Commencement phase, Secure Setting Exchange phase and Licensing phase.")]
@@ -189,16 +197,16 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             #region Test Code
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             #region Connection Initiation
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU to SUT, supported security protocol is {0}.", requestProtocol.ToString());
-            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, requestProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU to SUT, supported security protocol is {0}.", testConfig.requestProtocol.ToString());
+            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, testConfig.requestProtocol);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server X224 Connection Confirm.");
-            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(timeout);
+            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server X224 Connection Confirm PDU after receiving a Client X224 Connection Request PDU.");
 
             #endregion Connection Initiation
@@ -212,7 +220,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             rdpbcgrAdapter.SendClientMCSConnectInitialPDU(NegativeType.None, SVCNames, false, false, false, supportMultitransportReliable, supportMultitransportLossy, false);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server MCS Connect Response PDU with GCC Conference Create Response.");
-            Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response response = rdpbcgrAdapter.ExpectPacket<Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response>(timeout);
+            Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response response = rdpbcgrAdapter.ExpectPacket<Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response>(testConfig.timeout);
             this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server MCS Connect Response after receiving a Client MCS Connect Initial PDU.");
 
             #endregion Basic Setting Exchange
@@ -226,7 +234,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             rdpbcgrAdapter.SendClientMCSAttachUserRequest(NegativeType.None);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server MCS Attach User Confirm PDU.");
-            Server_MCS_Attach_User_Confirm_Pdu attachuserConfirm = rdpbcgrAdapter.ExpectPacket<Server_MCS_Attach_User_Confirm_Pdu>(timeout);
+            Server_MCS_Attach_User_Confirm_Pdu attachuserConfirm = rdpbcgrAdapter.ExpectPacket<Server_MCS_Attach_User_Confirm_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(attachuserConfirm, "RDP Server MUST response a Server MCS Attach User Confirm PDU after receiving a Client MCS Attach User Request PDU.");
 
             this.Site.Log.Add(LogEntryKind.Comment, "The test suite proceeds to join the user channel, the input/output (I/O) channel, and all of the static virtual channels.");
@@ -234,7 +242,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             #endregion Channel Connection
 
-            if (requestProtocol == requestedProtocols_Values.PROTOCOL_RDP_FLAG)
+            if (testConfig.requestProtocol == requestedProtocols_Values.PROTOCOL_RDP_FLAG)
             {
                 this.Site.Log.Add(LogEntryKind.Comment, "Standard RDP Security mechanisms are being employed, Test Suite sends a Client Security Exchange PDU to SUT.");
                 rdpbcgrAdapter.SendClientSecurityExchangePDU(NegativeType.None);
@@ -242,15 +250,14 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Info PDU.");
             rdpbcgrAdapter.SendClientInfoPDU(NegativeType.None, CompressionType.PACKET_COMPR_TYPE_RDP61, false);
-
-            Server_License_Error_Pdu_Valid_Client licenseErrorPdu = rdpbcgrAdapter.ExpectPacket<Server_License_Error_Pdu_Valid_Client>(timeout);
-            this.Site.Assert.IsNotNull(licenseErrorPdu, "RDP Server MUST send a Server License Error PDU during Licensing phase.");
+            rdpbcgrAdapter.ProcessLicenseSequence(testConfig.timeout);
 
             #endregion Test Code
         }
 
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify SUT can process the Capability Exchange phase successfully.")]
@@ -259,22 +266,22 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             #region Test Steps
             //1. Initiate an RDP connection to RDP server (SUT) and complete the Connection Initiation phase, Basic Setting Exchange phase, Channel Connection phase, RDP Security Commencement phase, Secure Setting Exchange Phase and Licensing phase.
             //2. Test Suite expects a Server Demand Active PDU from SUT. When received, Test Suite verifies this PDU.
-            //3. Test Suite sends a Client confirm Active PDU to SUT. 
+            //3. Test Suite sends a Client confirm Active PDU to SUT.
             //4. Test Suite expects SUT continues the connection by sending a Server Synchronize PDU.
             #endregion Test Steps
 
             #region Test Code
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             #region Connection Initiation
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU to SUT, supported security protocol is {0}.", requestProtocol.ToString());
-            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, requestProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU to SUT, supported security protocol is {0}.", testConfig.requestProtocol.ToString());
+            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, testConfig.requestProtocol);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server X224 Connection Confirm.");
-            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(timeout);
+            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server X224 Connection Confirm PDU after receiving a Client X224 Connection Request PDU.");
 
             #endregion Connection Initiation
@@ -288,7 +295,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             rdpbcgrAdapter.SendClientMCSConnectInitialPDU(NegativeType.None, SVCNames, false, false, false, supportMultitransportReliable, supportMultitransportLossy, false);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server MCS Connect Response PDU with GCC Conference Create Response.");
-            Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response response = rdpbcgrAdapter.ExpectPacket<Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response>(timeout);
+            Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response response = rdpbcgrAdapter.ExpectPacket<Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response>(testConfig.timeout);
             this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server MCS Connect Response after receiving a Client MCS Connect Initial PDU.");
 
             #endregion Basic Setting Exchange
@@ -302,7 +309,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             rdpbcgrAdapter.SendClientMCSAttachUserRequest(NegativeType.None);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server MCS Attach User Confirm PDU.");
-            Server_MCS_Attach_User_Confirm_Pdu attachuserConfirm = rdpbcgrAdapter.ExpectPacket<Server_MCS_Attach_User_Confirm_Pdu>(timeout);
+            Server_MCS_Attach_User_Confirm_Pdu attachuserConfirm = rdpbcgrAdapter.ExpectPacket<Server_MCS_Attach_User_Confirm_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(attachuserConfirm, "RDP Server MUST response a Server MCS Attach User Confirm PDU after receiving a Client MCS Attach User Request PDU.");
 
             this.Site.Log.Add(LogEntryKind.Comment, "The test suite proceeds to join the user channel, the input/output (I/O) channel, and all of the static virtual channels.");
@@ -312,27 +319,25 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             #region Security Commencement phase, Secure Setting Exchange Phase and Licensing phase
 
-            if (requestProtocol == requestedProtocols_Values.PROTOCOL_RDP_FLAG)
+            if (testConfig.requestProtocol == requestedProtocols_Values.PROTOCOL_RDP_FLAG)
             {
                 this.Site.Log.Add(LogEntryKind.Comment, "Standard RDP Security mechanisms are being employed, Test Suite sends a Client Security Exchange PDU to SUT.");
                 rdpbcgrAdapter.SendClientSecurityExchangePDU(NegativeType.None);
             }
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Info PDU.");
-            rdpbcgrAdapter.SendClientInfoPDU(NegativeType.None, CompressionType.PACKET_COMPR_TYPE_RDP61, false);
-
-            Server_License_Error_Pdu_Valid_Client licenseErrorPdu = rdpbcgrAdapter.ExpectPacket<Server_License_Error_Pdu_Valid_Client>(timeout);
-            this.Site.Assert.IsNotNull(licenseErrorPdu, "RDP Server MUST send a Server License Error PDU during Licensing phase.");
-
             #endregion Security Commencement phase, Secure Setting Exchange Phase and Licensing phase
 
-            Server_Demand_Active_Pdu demandActivePdu = rdpbcgrAdapter.ExpectPacket<Server_Demand_Active_Pdu>(timeout);
+            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Info PDU.");
+            rdpbcgrAdapter.SendClientInfoPDU(NegativeType.None, CompressionType.PACKET_COMPR_TYPE_RDP61, false);
+            rdpbcgrAdapter.ProcessLicenseSequence(testConfig.timeout);
+
+            Server_Demand_Active_Pdu demandActivePdu = rdpbcgrAdapter.ExpectPacket<Server_Demand_Active_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(demandActivePdu, "If the Licensing phase of the RDP Connection Sequence is successfully completed, RDP server must send a Server Demand Active PDU.");
 
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Confirm Active PDU.");
             rdpbcgrAdapter.SendClientConfirmActivePDU(NegativeType.None, true, true, true, true, true, true);
 
-            Server_Synchronize_Pdu synchronizePdu = rdpbcgrAdapter.ExpectPacket<Server_Synchronize_Pdu>(timeout);
+            Server_Synchronize_Pdu synchronizePdu = rdpbcgrAdapter.ExpectPacket<Server_Synchronize_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(synchronizePdu, "RDP Server MUST send a Server Synchronize PDU after receiving a Client Confirm Active PDU.");
 
             #endregion Test Code
@@ -341,6 +346,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify SUT can process the Connection Finalization phase successfully.")]
@@ -360,19 +366,19 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             //    Server Control PDU - Granted Control
             //    Server Font Map PDU
             #endregion Test Steps
-            
+
             #region Test Code
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             #region Connection Initiation
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU to SUT, supported security protocol is {0}.", requestProtocol.ToString());
-            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, requestProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Send a Client X.224 Connection Request PDU to SUT, supported security protocol is {0}.", testConfig.requestProtocol.ToString());
+            rdpbcgrAdapter.SendClientX224ConnectionRequest(NegativeType.None, testConfig.requestProtocol);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server X224 Connection Confirm.");
-            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(timeout);
+            Server_X_224_Connection_Confirm_Pdu confirmPdu = rdpbcgrAdapter.ExpectPacket<Server_X_224_Connection_Confirm_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server X224 Connection Confirm PDU after receiving a Client X224 Connection Request PDU.");
 
             #endregion Connection Initiation
@@ -386,7 +392,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             rdpbcgrAdapter.SendClientMCSConnectInitialPDU(NegativeType.None, SVCNames, false, false, false, supportMultitransportReliable, supportMultitransportLossy, false);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server MCS Connect Response PDU with GCC Conference Create Response.");
-            Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response response = rdpbcgrAdapter.ExpectPacket<Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response>(timeout);
+            Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response response = rdpbcgrAdapter.ExpectPacket<Server_MCS_Connect_Response_Pdu_with_GCC_Conference_Create_Response>(testConfig.timeout);
             this.Site.Assert.IsNotNull(confirmPdu, "RDP Server MUST response a Server MCS Connect Response after receiving a Client MCS Connect Initial PDU.");
 
             #endregion Basic Setting Exchange
@@ -400,7 +406,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             rdpbcgrAdapter.SendClientMCSAttachUserRequest(NegativeType.None);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expecting SUT to send a Server MCS Attach User Confirm PDU.");
-            Server_MCS_Attach_User_Confirm_Pdu attachuserConfirm = rdpbcgrAdapter.ExpectPacket<Server_MCS_Attach_User_Confirm_Pdu>(timeout);
+            Server_MCS_Attach_User_Confirm_Pdu attachuserConfirm = rdpbcgrAdapter.ExpectPacket<Server_MCS_Attach_User_Confirm_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(attachuserConfirm, "RDP Server MUST response a Server MCS Attach User Confirm PDU after receiving a Client MCS Attach User Request PDU.");
 
             this.Site.Log.Add(LogEntryKind.Comment, "The test suite proceeds to join the user channel, the input/output (I/O) channel, and all of the static virtual channels.");
@@ -410,7 +416,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             #region Security Commencement phase, Secure Setting Exchange Phase and Licensing phase
 
-            if (requestProtocol == requestedProtocols_Values.PROTOCOL_RDP_FLAG)
+            if (testConfig.requestProtocol == requestedProtocols_Values.PROTOCOL_RDP_FLAG)
             {
                 this.Site.Log.Add(LogEntryKind.Comment, "Standard RDP Security mechanisms are being employed, Test Suite sends a Client Security Exchange PDU to SUT.");
                 rdpbcgrAdapter.SendClientSecurityExchangePDU(NegativeType.None);
@@ -418,15 +424,13 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Info PDU.");
             rdpbcgrAdapter.SendClientInfoPDU(NegativeType.None, CompressionType.PACKET_COMPR_TYPE_RDP61, false);
-
-            Server_License_Error_Pdu_Valid_Client licenseErrorPdu = rdpbcgrAdapter.ExpectPacket<Server_License_Error_Pdu_Valid_Client>(timeout);
-            this.Site.Assert.IsNotNull(licenseErrorPdu, "RDP Server MUST send a Server License Error PDU during Licensing phase.");
+            rdpbcgrAdapter.ProcessLicenseSequence(testConfig.timeout);
 
             #endregion Security Commencement phase, Secure Setting Exchange Phase and Licensing phase
 
             #region Capabilities Exchange phase
 
-            Server_Demand_Active_Pdu demandActivePdu = rdpbcgrAdapter.ExpectPacket<Server_Demand_Active_Pdu>(timeout);
+            Server_Demand_Active_Pdu demandActivePdu = rdpbcgrAdapter.ExpectPacket<Server_Demand_Active_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(demandActivePdu, "If the Licensing phase of the RDP Connection Sequence is successfully completed, RDP server must send a Server Demand Active PDU.");
 
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Confirm Active PDU.");
@@ -437,10 +441,10 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Synchronize PDU.");
             rdpbcgrAdapter.SendClientSynchronizePDU();
 
-            Server_Synchronize_Pdu synchronizePdu = rdpbcgrAdapter.ExpectPacket<Server_Synchronize_Pdu>(timeout);
+            Server_Synchronize_Pdu synchronizePdu = rdpbcgrAdapter.ExpectPacket<Server_Synchronize_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(synchronizePdu, "RDP Server MUST send a Server Synchronize PDU after receiving a Client Confirm Active PDU.");
 
-            Server_Control_Pdu_Cooperate controlPdu = rdpbcgrAdapter.ExpectPacket<Server_Control_Pdu_Cooperate>(timeout);
+            Server_Control_Pdu_Cooperate controlPdu = rdpbcgrAdapter.ExpectPacket<Server_Control_Pdu_Cooperate>(testConfig.timeout);
             this.Site.Assert.IsNotNull(controlPdu, "RDP Server MUST send a Server Control PDU – Cooperate during Connection Finalization phase");
 
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Control PDU - Cooperate.");
@@ -449,7 +453,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Control PDU - Request Control.");
             rdpbcgrAdapter.SendClientControlRequestPDU();
 
-            Server_Control_Pdu_Granted_Control grantedControlPdu = rdpbcgrAdapter.ExpectPacket<Server_Control_Pdu_Granted_Control>(timeout);
+            Server_Control_Pdu_Granted_Control grantedControlPdu = rdpbcgrAdapter.ExpectPacket<Server_Control_Pdu_Granted_Control>(testConfig.timeout);
             this.Site.Assert.IsNotNull(grantedControlPdu, "RDP Server MUST send a Server Control PDU – Granted Control during Connection Finalization phase");
 
             if (rdpbcgrAdapter.IsBitmapCacheHostSupport)
@@ -461,7 +465,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Font List PDU.");
             rdpbcgrAdapter.SendClientFontListPDU();
 
-            Server_Font_Map_Pdu fontMapPdu = rdpbcgrAdapter.ExpectPacket<Server_Font_Map_Pdu>(timeout);
+            Server_Font_Map_Pdu fontMapPdu = rdpbcgrAdapter.ExpectPacket<Server_Font_Map_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(fontMapPdu, "RDP Server MUST send a Server Font Map PDU during Connection Finalization phase");
 
             #endregion Test Code
@@ -469,6 +473,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify the messages and behaviors of the disconnection sequence initiated by SUT, after user logon.")]
@@ -478,30 +483,29 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             //1. Initiate and complete an RDP connection with RDP server (SUT).
             //2. Test suite expects a Server Save Session Info PDU to notify user logon, and verify it.
             //3. Test suite sends a Shutdown Request PDU to initiate a disconnection sequence.
-            //4. Test Suite expects a Shutdown Request Denied PDU. 
+            //4. Test Suite expects a Shutdown Request Denied PDU.
             #endregion Test Steps
 
             #region Test Code
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
-                        
             string[] SVCNames = new string[] { RdpConstValue.SVCNAME_RDPEDYC };
-            rdpbcgrAdapter.EstablishRDPConnection(requestProtocol, 
-                SVCNames, 
-                CompressionType.PACKET_COMPR_TYPE_RDP61, 
+            rdpbcgrAdapter.EstablishRDPConnection(testConfig.requestProtocol,
+                SVCNames,
+                CompressionType.PACKET_COMPR_TYPE_RDP61,
                 false, // Is reconnect
                 true  // Is Auto logon
                 );
 
             this.Site.Log.Add(LogEntryKind.Comment, "Wait RDP server to notify user logon.");
-            rdpbcgrAdapter.WaitForLogon(timeout);
+            rdpbcgrAdapter.WaitForLogon(testConfig.timeout);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Shutdown Request PDU.");
             rdpbcgrAdapter.SendClientShutdownRequestPDU();
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expect a Server Shutdown Request Denied PDU from SUT.");
-            Server_Shutdown_Request_Denied_Pdu requestDenied = rdpbcgrAdapter.ExpectPacket<Server_Shutdown_Request_Denied_Pdu>(timeout);
+            Server_Shutdown_Request_Denied_Pdu requestDenied = rdpbcgrAdapter.ExpectPacket<Server_Shutdown_Request_Denied_Pdu>(testConfig.timeout);
             this.Site.Assert.IsNotNull(requestDenied, "Timeout when receiving Server Shutdown Request Denied PDU, RDP Server should response a Server Shutdown Request Denied PDU if receiving a Client Shutdown Request PDU after user logon.");
 
             #endregion Test Code
@@ -509,6 +513,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
         [TestMethod]
         [Priority(1)]
+        [TestCategory("BVT")]
         [TestCategory("RDP7.0")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify the messages and behaviors of the disconnection sequence initiated by SUT, before user logon.")]
@@ -522,17 +527,17 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
 
             #region Test Code
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             string[] SVCNames = new string[] { RdpConstValue.SVCNAME_RDPEDYC };
-            rdpbcgrAdapter.EstablishRDPConnection(requestProtocol, SVCNames, CompressionType.PACKET_COMPR_TYPE_RDP61);
+            rdpbcgrAdapter.EstablishRDPConnection(testConfig.requestProtocol, SVCNames, CompressionType.PACKET_COMPR_TYPE_RDP61);
 
             this.Site.Log.Add(LogEntryKind.Comment, "Send a Client Shutdown Request PDU.");
             rdpbcgrAdapter.SendClientShutdownRequestPDU();
 
             this.Site.Log.Add(LogEntryKind.Comment, "Expect RDP server drop this connection.");
-            bool disconnected = rdpbcgrAdapter.ExpectDisconnetion(timeout);
+            bool disconnected = rdpbcgrAdapter.ExpectDisconnetion(testConfig.timeout);
             Site.Assert.IsTrue(disconnected, "SUT should disconnect the connection when receiving Server Shutdown Request before logon.");
             #endregion Test Code
         }

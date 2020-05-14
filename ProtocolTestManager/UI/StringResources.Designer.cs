@@ -19,7 +19,7 @@ namespace Microsoft.Protocols.TestManager.UI {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "15.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     internal class StringResources {
@@ -171,6 +171,24 @@ namespace Microsoft.Protocols.TestManager.UI {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Error.
+        /// </summary>
+        internal static string Error {
+            get {
+                return ResourceManager.GetString("Error", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Some exception(s) happened during execution. Please open an issue on our GitHub site at [https://github.com/Microsoft/WindowsProtocolTestSuites/issues]. The exception log could be found at [{0}]..
+        /// </summary>
+        internal static string ExceptionsHappendWithLogsRecorded {
+            get {
+                return ResourceManager.GetString("ExceptionsHappendWithLogsRecorded", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to This feature is detected not supported..
         /// </summary>
         internal static string FeatureNotSupported {
@@ -185,6 +203,33 @@ namespace Microsoft.Protocols.TestManager.UI {
         internal static string FilterTestCases {
             get {
                 return ResourceManager.GetString("FilterTestCases", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Please visit our GitHub repo at [https://aka.ms/wpts], if you have any questions, issues or suggestions..
+        /// </summary>
+        internal static string HintForGitHub {
+            get {
+                return ResourceManager.GetString("HintForGitHub", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to To configure and run Windows Protocol Test Suites, you should install at least one test suite. You can get the latest released test suites from [https://github.com/microsoft/WindowsProtocolTestSuites/releases/latest]. Restart Protocol Test Manager after you install the test suite..
+        /// </summary>
+        internal static string HintForNoTestSuiteInstalled {
+            get {
+                return ResourceManager.GetString("HintForNoTestSuiteInstalled", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Information.
+        /// </summary>
+        internal static string Information {
+            get {
+                return ResourceManager.GetString("Information", resourceCulture);
             }
         }
         
@@ -207,11 +252,29 @@ namespace Microsoft.Protocols.TestManager.UI {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to No report format selected..
+        /// </summary>
+        internal static string NoReportFormatSelected {
+            get {
+                return ResourceManager.GetString("NoReportFormatSelected", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to No test case selected..
         /// </summary>
         internal static string NoTestCaseSelected {
             get {
                 return ResourceManager.GetString("NoTestCaseSelected", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Test agent exited unexpectedly with no test case being executed..
+        /// </summary>
+        internal static string NoTestExecuted {
+            get {
+                return ResourceManager.GetString("NoTestExecuted", resourceCulture);
             }
         }
         
@@ -230,6 +293,25 @@ namespace Microsoft.Protocols.TestManager.UI {
         internal static string PlaylistFilter {
             get {
                 return ResourceManager.GetString("PlaylistFilter", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The PTM profile has been upgraded.
+        ///New profile is saved as {0}..
+        /// </summary>
+        internal static string PtmProfileUpgraded {
+            get {
+                return ResourceManager.GetString("PtmProfileUpgraded", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to ProtocolTestManager is already running....
+        /// </summary>
+        internal static string PTMRunning {
+            get {
+                return ResourceManager.GetString("PTMRunning", resourceCulture);
             }
         }
         
@@ -379,11 +461,29 @@ namespace Microsoft.Protocols.TestManager.UI {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Failed to set test report format..
+        /// </summary>
+        internal static string UnknownReportFormat {
+            get {
+                return ResourceManager.GetString("UnknownReportFormat", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to devenv.exe.
         /// </summary>
         internal static string VSFileName {
             get {
                 return ResourceManager.GetString("VSFileName", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Warning.
+        /// </summary>
+        internal static string Warning {
+            get {
+                return ResourceManager.GetString("Warning", resourceCulture);
             }
         }
     }

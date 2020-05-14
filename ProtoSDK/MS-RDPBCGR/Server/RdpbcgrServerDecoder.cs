@@ -916,7 +916,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             TS_UD_CS_CORE coreData = new TS_UD_CS_CORE();
             coreData.header.type = (TS_UD_HEADER_type_Values)ParseUInt16(data, ref currentIndex, false);
             coreData.header.length = ParseUInt16(data, ref currentIndex, false);
-            coreData.version = (version_Values)ParseUInt32(data, ref currentIndex, false);
+            coreData.version = (TS_UD_CS_CORE_version_Values)ParseUInt32(data, ref currentIndex, false);
             coreData.desktopWidth = ParseUInt16(data, ref currentIndex, false);
             coreData.desktopHeight = ParseUInt16(data, ref currentIndex, false);
             coreData.colorDepth = (colorDepth_Values)ParseUInt16(data, ref currentIndex, false);
@@ -1207,48 +1207,41 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             {
                 converter = new UnicodeEncoding();
 
-
-                byte[] domain = GetBytes(data, ref currentIndex, (int)infoData.cbDomain);
+                //Include the null terminator
+                byte[] domain = GetBytes(data, ref currentIndex, (int)infoData.cbDomain + 2);
                 infoData.Domain = converter.GetString(domain);
-                currentIndex += 2;
-                byte[] userName = GetBytes(data, ref currentIndex, (int)infoData.cbUserName);
-                infoData.UserName = converter.GetString(userName);
-                currentIndex += 2;
 
-                byte[] password = GetBytes(data, ref currentIndex, (int)infoData.cbPassword);
+                byte[] userName = GetBytes(data, ref currentIndex, (int)infoData.cbUserName + 2);
+                infoData.UserName = converter.GetString(userName);
+
+                byte[] password = GetBytes(data, ref currentIndex, (int)infoData.cbPassword + 2);
                 infoData.Password = converter.GetString(password);
-                currentIndex += 2;
-                byte[] alternateShell = GetBytes(data, ref currentIndex, (int)infoData.cbAlternateShell);
+
+                byte[] alternateShell = GetBytes(data, ref currentIndex, (int)infoData.cbAlternateShell + 2);
                 infoData.AlternateShell = converter.GetString(alternateShell);
-                currentIndex += 2;
-                byte[] workingDir = GetBytes(data, ref currentIndex, (int)infoData.cbWorkingDir);
+
+                byte[] workingDir = GetBytes(data, ref currentIndex, (int)infoData.cbWorkingDir + 2);
                 infoData.WorkingDir = converter.GetString(workingDir);
-                currentIndex += 2;
             }
 
             else
             {
                 converter = new ASCIIEncoding();
 
-                byte[] domain = GetBytes(data, ref currentIndex, (int)infoData.cbDomain);
+                byte[] domain = GetBytes(data, ref currentIndex, (int)infoData.cbDomain + 1);
                 infoData.Domain = converter.GetString(domain);
-                currentIndex += 1;
 
-                byte[] userName = GetBytes(data, ref currentIndex, (int)infoData.cbUserName);
+                byte[] userName = GetBytes(data, ref currentIndex, (int)infoData.cbUserName + 1);
                 infoData.UserName = converter.GetString(userName);
-                currentIndex += 1;
 
-                byte[] password = GetBytes(data, ref currentIndex, (int)infoData.cbPassword);
+                byte[] password = GetBytes(data, ref currentIndex, (int)infoData.cbPassword + 1);
                 infoData.Password = converter.GetString(password);
-                currentIndex += 1;
 
-                byte[] alternateShell = GetBytes(data, ref currentIndex, (int)infoData.cbAlternateShell);
+                byte[] alternateShell = GetBytes(data, ref currentIndex, (int)infoData.cbAlternateShell + 1);
                 infoData.AlternateShell = converter.GetString(alternateShell);
-                currentIndex += 1;
 
-                byte[] workingDir = GetBytes(data, ref currentIndex, (int)infoData.cbWorkingDir);
+                byte[] workingDir = GetBytes(data, ref currentIndex, (int)infoData.cbWorkingDir + 1);
                 infoData.WorkingDir = converter.GetString(workingDir);
-                currentIndex += 1;
             }
 
             if (currentIndex < data.Length)
@@ -1783,8 +1776,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
             // TS_INPUT_CAPABILITYSET: imeFileName
             byte[] imeFileName = GetBytes(data, ref currentIndex,
-                ConstValue.TS_INPUT_CAPABILITY_SET_IME_FILE_NAME_LENGTH);
-            set.imeFileName = BitConverter.ToString(imeFileName);
+                ConstValue.TS_INPUT_CAPABILITYSET_IME_FILE_NAME_LENGTH);
+            set.imeFileName = Encoding.Unicode.GetString(imeFileName);
 
             // Check if data length is consistent with the decoded struct length
             VerifyDataLength(data.Length, currentIndex, ConstValue.ERROR_MESSAGE_DATA_LENGTH_INCONSISTENT);
@@ -2249,7 +2242,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             pdu.shareDataHeader = ParseTsShareDataHeader(data, ref currentIndex);
 
             // TS_SYNCHRONIZE_PDU: messageType 
-            pdu.messageType = (messageType_Values)ParseUInt16(data, ref currentIndex, false);
+            pdu.messageType = (TS_SYNCHRONIZE_PDU_messageType_Values)ParseUInt16(data, ref currentIndex, false);
 
             // TS_SYNCHRONIZE_PDU: targetUser
             pdu.targetUser = ParseUInt16(data, ref currentIndex, false);
@@ -2674,6 +2667,9 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     case eventCode_Values.FASTPATH_INPUT_EVENT_UNICODE:
                         inputEvent.eventData = ParseTsFpInputUnicode(data, ref currentIndex);
                         break;
+                    case eventCode_Values.FASTPATH_INPUT_EVENT_QOE_TIMESTAMP:
+                        inputEvent.eventData = ParseTsFpInputQoETimeStamp(data, ref currentIndex);
+                        break;
                     default:
                         throw new FormatException(ConstValue.ERROR_MESSAGE_ENUM_UNRECOGNIZED);
                 }
@@ -2752,6 +2748,22 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
             return unicode;
         }
+
+        /// <summary>
+        /// Parse TS_FP_QOETIMESTAMP_EVENT
+        /// (parser index is updated according to parsed length)
+        /// </summary>
+        /// <param name="data">data to be parsed</param>
+        /// <param name="currentIndex">current parser index</param>
+        /// <returns>parsed TS_FP_QOETIMESTAMP_EVENT</returns>
+        private TS_FP_QOETIMESTAMP_EVENT ParseTsFpInputQoETimeStamp(byte[] data, ref int currentIndex)
+        {
+            TS_FP_QOETIMESTAMP_EVENT qoeTimeStamp = new TS_FP_QOETIMESTAMP_EVENT();
+
+            qoeTimeStamp.timestamp = ParseUInt32(data, ref currentIndex, false);
+
+            return qoeTimeStamp;
+        }
         #endregion
 
 
@@ -2781,37 +2793,6 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 }
                 return decryptedData;
             }
-        }
-
-
-        /// <summary>
-        /// Get information from Fast-path Output Header
-        /// </summary>
-        /// <param name="fpOutputHeader">fast-path output header</param>
-        /// <param name="actionCode">action code</param>
-        /// <param name="encryptionFlags">encryption flags</param>
-        private void GetFpInputHeaderInfo(
-            byte fpInputHeader,
-            out nested_TS_FP_UPDATE_PDU_fpOutputHeader_actionCode_Values actionCode,
-            out byte numberEvents,
-            out encryptionFlagsChgd_Values encryptionFlags)
-        {
-            // The following logic is derived from TD section [2.2.9.1.2]
-            // fpOutputHeader is a 1-byte, bit-packed field formed by:
-            // actionCode(2 bits) + reserved(4 bits) + encryptionFlags(2 bits)
-
-            // action code
-            byte code = (byte)(fpInputHeader & 0x03);
-            actionCode = (nested_TS_FP_UPDATE_PDU_fpOutputHeader_actionCode_Values)code;
-
-            byte num = (byte)((fpInputHeader & 0x3c) >> 2);
-            numberEvents = num;
-
-            // encryption flags
-            byte flags = (byte)((fpInputHeader & 0xc0) >> 6);
-            encryptionFlags = (encryptionFlagsChgd_Values)flags;
-
-            return;
         }
 
 
@@ -3313,7 +3294,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
                     // receivedBytes[1] and receivedBytes[2] are the corresponding
                     // "length1" and "length2" fields in TS_FP_UPDATE_PDU
-                    packetLength = CalculateFpUpdatePduLength(receivedBytes[1], receivedBytes[2]);
+                    packetLength = RdpbcgrUtility.CalculateFpUpdatePduLength(receivedBytes[1], receivedBytes[2]);
                 }
 
                 // Received bytes does not contain enough data
@@ -3329,33 +3310,6 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             }
         }
 
-
-        /// <summary>
-        /// Calculate the overall length of Server Fast-Path Update PDU 
-        /// (based on field values of "length1" and "length2")
-        /// </summary>
-        /// <param name="length1">value of length1 field</param>
-        /// <param name="length2">value of length2 field</param>
-        /// <returns>caculated PDU length</returns>
-        private UInt16 CalculateFpUpdatePduLength(byte length1, byte length2)
-        {
-            if ((ConstValue.MOST_SIGNIFICANT_BIT_FILTER & length1) == length1)
-            {
-                // when length1's most significant bit is not set
-                // only length1 is considered
-                return (UInt16)length1;
-            }
-            else
-            {
-                // when length1's most significant bit is set
-                // length1 and length2 are concatenated
-                byte[] buffer = new byte[2];
-                buffer[0] = length2;
-                buffer[1] = (byte)(ConstValue.MOST_SIGNIFICANT_BIT_FILTER & length1);
-                UInt16 length = BitConverter.ToUInt16(buffer, 0);
-                return length;
-            }
-        }
         #endregion Private Methods: Decoder Callback
 
 
@@ -4215,11 +4169,13 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             int currentIndex = 0;
             TS_FP_INPUT_PDU pdu = new TS_FP_INPUT_PDU();
 
-            pdu.fpInputHeader.actionCode = ParseByte(data, ref currentIndex);
-            nested_TS_FP_UPDATE_PDU_fpOutputHeader_actionCode_Values actionCode;
-            byte numberEvents;
-            encryptionFlagsChgd_Values encryptionFlags;
-            GetFpInputHeaderInfo(pdu.fpInputHeader.actionCode, out actionCode, out numberEvents, out encryptionFlags);
+            pdu.fpInputHeader = new nested_TS_FP_INPUT_PDU_fpInputHeader(ParseByte(data, ref currentIndex));
+
+            var actionCode = pdu.fpInputHeader.action;
+
+            byte numberEvents = (byte)pdu.fpInputHeader.numEvents;
+
+            var encryptionFlags = pdu.fpInputHeader.flags;
 
             pdu.length1 = ParseByte(data, ref currentIndex);
 
@@ -4596,6 +4552,9 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     throw new FormatException(ConstValue.ERROR_MESSAGE_UNRECOGNIZED_PDU);
                 }
 
+                // check session ID
+                UInt32 sessionID = ParseUInt32(data, ref currentIndex, false);
+
                 // check auto reconnect cookie
                 int autoReconnectCookieLength = ParseUInt16(data, ref currentIndex, false);
                 currentIndex += autoReconnectCookieLength;
@@ -4712,6 +4671,9 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             int currentIndex = 0;
 
             pdu.Header = ParseRDSTLSCommonHeader(data, ref currentIndex);
+
+            // parse session ID
+            pdu.SessionID = ParseUInt32(data, ref currentIndex, false);
 
             // parse auto reconnect cookie
             pdu.AutoReconnectCookieLength = ParseUInt16(data, ref currentIndex, false);

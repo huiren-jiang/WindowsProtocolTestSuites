@@ -4,7 +4,7 @@
 using Microsoft.Protocols.TestTools;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
 using Microsoft.Protocols.TestTools.StackSdk.Networking.Rpce;
-using Microsoft.Protocols.TestTools.StackSdk.Security.Sspi;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -28,6 +28,8 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
         public DialectRevision MaxSmbVersionSupported;
 
         public DialectRevision MaxSmbVersionClientSupported;
+
+        public bool SendSignedRequest;
 
         public List<string> ActiveTDIs;
 
@@ -149,14 +151,6 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
             get
             {
                 return Boolean.Parse(GetProperty("IsMultiCreditSupported"));
-            }
-        }
-
-        public bool SendSignedRequest
-        {
-            get
-            {
-                return Boolean.Parse(GetProperty("SendSignedRequest"));
             }
         }
 
@@ -396,6 +390,8 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
 
         public List<EncryptionAlgorithm> SupportedEncryptionAlgorithmList;
 
+        public List<CompressionAlgorithm> SupportedCompressionAlgorithmList;
+
         #endregion
 
         #endregion
@@ -421,6 +417,15 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
             MaxSmbVersionClientSupported = ParsePropertyToEnum<DialectRevision>(GetProperty("MaxSmbVersionClientSupported"), "MaxSmbVersionClientSupported");
 
             SupportedEncryptionAlgorithmList = ParsePropertyToList<EncryptionAlgorithm>("SupportedEncryptionAlgorithms");
+
+            SupportedCompressionAlgorithmList = ParsePropertyToList<CompressionAlgorithm>("SupportedCompressionAlgorithms");
+
+            SendSignedRequest = Boolean.Parse(GetProperty("SendSignedRequest"));
+
+            if (!SendSignedRequest && MaxSmbVersionSupported == DialectRevision.Smb311)
+            {
+                Site.Assume.Fail("The config \"SendSignedRequest\" should not be false if \"MaxSmbVersionSupported\" is \"Smb311\".");
+            }
         }
 
         public bool IsIoCtlCodeSupported(CtlCode_Values ioCtlCode)
@@ -474,10 +479,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
             return GetProperty("Common", propertyName, checkNullOrEmpty);
         }
 
-        protected List<T> ParsePropertyToList<T>(string property) where T : struct
+        protected List<T> ParsePropertyToList<T>(string property, string groupName = "Common") where T : struct
         {
             List<T> list = new List<T>();
-            string propertyValue = GetProperty(property, false);
+            string propertyValue = GetProperty(groupName, property, false);
             if (string.IsNullOrEmpty(propertyValue)) return list;
 
             string[] values = propertyValue.Split(';');
@@ -578,24 +583,14 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
             }
         }
 
-        /// <summary>
-        /// Validate IOCTL and Dialect compatibility 
-        /// </summary>        
-        /// <param name="IOCTL">The IOCTL to check against dialect</param>        
-        public void CheckDialectIOCTLCompatibility(CtlCode_Values IOCTL)
+        public void CheckPlatform(Platform platform)
         {
-            switch (IOCTL)
+            if (Platform < platform)
             {
-                case CtlCode_Values.FSCTL_VALIDATE_NEGOTIATE_INFO:
-                    // FSCTL_VALIDATE_NEGOTIATE_INFO is not supported by SMB311 any more
-                    if (MaxSmbVersionSupported >= DialectRevision.Smb311 && MaxSmbVersionClientSupported >= DialectRevision.Smb311)
-                    {
-                        Site.Assert.Inconclusive("The VALIDATE_NEGOTIATE_INFO request is valid for the client and servers which implement the SMB 3.0 and SMB 3.0.2 dialects");
-                    }
-                    break;
-                    // Add other IOCTL and Dialect compatibility validation if any.
+                Site.Assert.Inconclusive("The case is applicable in {0}.", platform);
             }
         }
+
         public void CheckCapabilities(NEGOTIATE_Response_Capabilities_Values capabilities)
         {
             foreach (NEGOTIATE_Response_Capabilities_Values capability in Enum.GetValues(typeof(NEGOTIATE_Response_Capabilities_Values)))
@@ -662,6 +657,90 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
                 Site.Assert.Inconclusive("Test case is applicable for the server that supports {0}", cipherId);
             }
         }
+
+        public bool IsCompressionSupported()
+        {
+            if (SupportedCompressionAlgorithmList.Count == 0
+                || (SupportedCompressionAlgorithmList.Count == 1 && SupportedCompressionAlgorithmList[0] == CompressionAlgorithm.NONE))
+            {
+                return false;
+            }
+
+            // Windows 10 v1809 operating system and prior, Windows Server v1809 operating system and prior, and Windows Server 2019 and prior do not support compression.
+            if (IsWindowsPlatform)
+            {
+                return Platform >= Platform.WindowsServerV1903;
+            }
+
+            return true;
+        }
+
+        public void CheckCompressionAlgorithm(CompressionAlgorithm? compressionAlgorithm = null)
+        {
+            if (SupportedCompressionAlgorithmList.Count == 0
+                || (SupportedCompressionAlgorithmList.Count == 1 && SupportedCompressionAlgorithmList[0] == CompressionAlgorithm.NONE))
+            {
+                Site.Assert.Inconclusive("SUT does not support compression!");
+            }
+
+            if (compressionAlgorithm != null)
+            {
+                if (!SupportedCompressionAlgorithmList.Contains(compressionAlgorithm.Value))
+                {
+                    Site.Assert.Inconclusive("The specified compression algorithm {0} is not supported by SUT!", compressionAlgorithm);
+                }
+            }
+        }
+
+        public void CheckNegotiateContext<T>(T request, Smb2NegotiateResponsePacket response)
+        {
+            if (response.PayLoad.DialectRevision != DialectRevision.Smb311)
+            {
+                return;
+            }
+
+            if (request is Smb2NegotiateRequestPacket)
+            {
+                Smb2NegotiateRequestPacket smb2Request = request as Smb2NegotiateRequestPacket;
+                // 3.3.5.4: if Dialect is "3.1.1" Then the server MUST build a NegotiateContextList for its negotiate response and check Including below:
+                // 1. The server MUST add an SMB2_PREAUTH_INTEGRITY_CAPABILITIES negotiate context to the response's NegotiateContextList.
+                if (response.NegotiateContext_PREAUTH == null)
+                {
+                    Site.Assert.Fail("The server MUST add an SMB2_PREAUTH_INTEGRITY_CAPABILITIES negotiate context to the response's NegotiateContextList.");
+                }
+
+                // 2. HashAlgorithmCount MUST be set to 1
+                Site.Assert.AreEqual<int>(1, response.NegotiateContext_PREAUTH.Value.HashAlgorithmCount, "The response's SMB2_PREAUTH_INTEGRITY_CAPABILITIES.HashAlgorithmCount MUST be set to 1");
+
+                // 3. SMB2_PREAUTH_INTEGRITY_CAPABILITIES Salt buffer length same as SaltLength
+                Site.Assert.AreEqual<int>(response.NegotiateContext_PREAUTH.Value.SaltLength, response.NegotiateContext_PREAUTH.Value.Salt.Length, "The response's SMB2_PREAUTH_INTEGRITY_CAPABILITIES Salt buffer length must same as SaltLength");
+
+                // 4. If client haven't send a negotiate context the server should not response except SMB2_PREAUTH_INTEGRITY_CAPABILITIES
+
+                if ((smb2Request.NegotiateContext_ENCRYPTION == null) && (response.NegotiateContext_ENCRYPTION != null))
+                {
+                    Site.Assert.Fail("The server Should not response a SMB2_ENCRYPTION_CAPABILITIES as it's not sent in request.");
+                }
+                if ((smb2Request.NegotiateContext_COMPRESSION == null) && (response.NegotiateContext_COMPRESSION != null))
+                {
+                    Site.Assert.Fail("The server Should not response a SMB2_COMPRESSION_CAPABILITIES as it's not sent in request.");
+                }
+
+                if (response.NegotiateContext_ENCRYPTION != null)
+                {
+                    Site.Assert.AreEqual<int>(1, response.NegotiateContext_ENCRYPTION.Value.CipherCount, "The response's SMB2_ENCRYPTION_CAPABILITIES.CipherCount MUST be set to 1");
+                }
+                if (response.NegotiateContext_COMPRESSION != null)
+                {
+                    Site.Assert.AreEqual<int>(1, response.NegotiateContext_COMPRESSION.Value.CompressionAlgorithmCount, "The response's SMB2_COMPRESSION_CAPABILITIES.CompressionAlgorithmCount MUST be set to 1");
+                }
+            }
+            else if (request is SmbNegotiateRequestPacket)
+            {
+                Site.Assert.IsNull(response.NegotiateContext_ENCRYPTION, "The server Should not response a SMB2_ENCRYPTION_CAPABILITIES as request is SmbNegotiateRequestPacket.");
+                Site.Assert.IsNull(response.NegotiateContext_COMPRESSION, "The server Should not response a SMB2_COMPRESSION_CAPABILITIES as request is SmbNegotiateRequestPacket.");
+            }
+        }
         #endregion
     }
 
@@ -711,5 +790,20 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Common.Adapter
         /// Windows Server 2019 
         /// </summary>
         WindowsServer2019 = 0x1000000B,
+
+        /// <summary>
+        /// Windows Server v1903 
+        /// </summary>
+        WindowsServerV1903 = 0x1000000C,
+
+        /// <summary>
+        /// Windows Server v1909
+        /// </summary>
+        WindowsServerV1909 = 0x1000000D,
+
+        /// <summary>
+        /// Windows Server v2004
+        /// </summary>
+        WindowsServerV2004 = 0x1000000E,
     }
 }

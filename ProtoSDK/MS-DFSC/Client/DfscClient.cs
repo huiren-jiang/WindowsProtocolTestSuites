@@ -3,7 +3,7 @@
 
 using System;
 using System.Text;
-using Microsoft.Protocols.TestTools.StackSdk.Security.Sspi;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
 
@@ -181,6 +181,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Dfsc
             {
                 fileName = fileName.Substring(1);
             }
+
+            fileName += '\0';
 
             //Build REQ_DFS_REFERRAL_EX structure
             REQ_GET_DFS_REFERRAL_EX DFSRequestEX = new REQ_GET_DFS_REFERRAL_EX();

@@ -7,9 +7,13 @@ using System.Linq;
 using System.Text;
 using System.Runtime.InteropServices;
 using Microsoft.Protocols.TestTools.StackSdk;
-using Microsoft.Protocols.TestTools.StackSdk.Security.Sspi;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Rsvd;
+using System.Security.Principal;
+using System.Diagnostics;
+using System.IO;
+
 
 namespace Microsoft.Protocols.TestManager.FileServerPlugin
 {
@@ -19,6 +23,7 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
     public partial class FSDetector
     {
         private string initiatorHostName = "Client01";
+
         /// <summary>
         /// Check if the server supports RSVD.
         /// </summary>
@@ -28,41 +33,52 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
             logWriter.AddLog(LogLevel.Information, "Share path: " + info.targetShareFullPath);
 
             #region Copy test VHD file to the target share to begin detecting RSVD
-            string vhdOnSharePath = info.targetShareFullPath + @"\" + vhdName;
-            CopyTestVHD(vhdOnSharePath);
+
+            string vhdOnSharePath = Path.Combine(info.targetShareFullPath, vhdName);
+            CopyTestVHD(info.targetShareFullPath, vhdOnSharePath);
             #endregion
 
-            #region RSVD version 2
+            try
+            {
+                #region RSVD version 2
 
-            bool versionTestRes = TestRsvdVersion(vhdName + fileNameSuffix, info.BasicShareName, RSVD_PROTOCOL_VERSION.RSVD_PROTOCOL_VERSION_2);
-            if (versionTestRes)
-            {
-                info.RsvdVersion = RSVD_PROTOCOL_VERSION.RSVD_PROTOCOL_VERSION_2;
-                result = DetectResult.Supported;
-                logWriter.AddLog(LogLevel.Information, "RSVD version 2 is supported");
-                return result;
-            }
-            else
-            {
-                logWriter.AddLog(LogLevel.Information, "The server doesn't support RSVD version 2.");
-            }
-            #endregion
+                bool versionTestRes = TestRsvdVersion(vhdName + fileNameSuffix, info.BasicShareName, RSVD_PROTOCOL_VERSION.RSVD_PROTOCOL_VERSION_2);
+                if (versionTestRes)
+                {
+                    info.RsvdVersion = RSVD_PROTOCOL_VERSION.RSVD_PROTOCOL_VERSION_2;
+                    result = DetectResult.Supported;
+                    logWriter.AddLog(LogLevel.Information, "RSVD version 2 is supported");
+                    return result;
+                }
+                else
+                {
+                    logWriter.AddLog(LogLevel.Information, "The server doesn't support RSVD version 2.");
+                }
+                #endregion
 
-            #region RSVD version 1
-            versionTestRes = TestRsvdVersion(vhdName + fileNameSuffix, info.BasicShareName, RSVD_PROTOCOL_VERSION.RSVD_PROTOCOL_VERSION_1);
-            if (versionTestRes)
-            {
-                info.RsvdVersion = RSVD_PROTOCOL_VERSION.RSVD_PROTOCOL_VERSION_1;
-                result = DetectResult.Supported;
-                logWriter.AddLog(LogLevel.Information, "RSVD version 1 is supported");
-                return result;
+                #region RSVD version 1
+                versionTestRes = TestRsvdVersion(vhdName + fileNameSuffix, info.BasicShareName, RSVD_PROTOCOL_VERSION.RSVD_PROTOCOL_VERSION_1);
+                if (versionTestRes)
+                {
+                    info.RsvdVersion = RSVD_PROTOCOL_VERSION.RSVD_PROTOCOL_VERSION_1;
+                    result = DetectResult.Supported;
+                    logWriter.AddLog(LogLevel.Information, "RSVD version 1 is supported");
+                    return result;
+                }
+                else
+                {
+                    result = DetectResult.UnSupported;
+                    logWriter.AddLog(LogLevel.Information, @"The server doesn't support RSVD.");
+                }
+                #endregion
+
             }
-            else
+            catch (Exception e)
             {
-                result = DetectResult.UnSupported;
-                logWriter.AddLog(LogLevel.Information, @"The server doesn't support RSVD.");
+                logWriter.AddLog(LogLevel.Information, @"Detect RSVD failed with exception: " + e.Message);
             }
-            #endregion
+
+            DeleteTestVHD(info.targetShareFullPath, vhdOnSharePath);
             return result;
         }
 
@@ -88,7 +104,7 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                         new Smb2CreateSvhdxOpenDeviceContextV2
                         {
                             Version = (uint)RSVD_PROTOCOL_VERSION.RSVD_PROTOCOL_VERSION_2,
-                            OriginatorFlags = (uint)OriginatorFlag.SVHDX_ORIGINATOR_PVHDPARSER, 
+                            OriginatorFlags = (uint)OriginatorFlag.SVHDX_ORIGINATOR_PVHDPARSER,
                             InitiatorHostName = initiatorHostName,
                             InitiatorHostNameLength = (ushort)(initiatorHostName.Length * 2),  // InitiatorHostName is a null-terminated Unicode UTF-16 string 
                             VirtualDiskPropertiesInitialized = 0,
@@ -98,19 +114,36 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                             VirtualSize = 0
                         }
                     };
+                    foreach (Smb2CreateSvhdxOpenDeviceContextV2 context in contexts)
+                    {
+                        logWriter.AddLog(LogLevel.Information, @"OpenSharedVirtualDisk request was sent with context: ");
+                        logWriter.AddLog(LogLevel.Information, @"Version: " + context.Version.ToString());
+                        logWriter.AddLog(LogLevel.Information, @"OriginatorFlags: " + context.OriginatorFlags.ToString());
+                        logWriter.AddLog(LogLevel.Information, @"InitiatorHostName: " + context.InitiatorHostName.ToString());
+                        logWriter.AddLog(LogLevel.Information, @"InitiatorHostNameLength: " + context.InitiatorHostNameLength.ToString());
+
+                    }
                 }
                 else
                 {
                     contexts = new Smb2CreateContextRequest[]
                     {
-                        new Smb2CreateSvhdxOpenDeviceContext 
+                        new Smb2CreateSvhdxOpenDeviceContext
                         {
                             Version = (uint)RSVD_PROTOCOL_VERSION.RSVD_PROTOCOL_VERSION_1,
-                            OriginatorFlags = (uint)OriginatorFlag.SVHDX_ORIGINATOR_PVHDPARSER, 
+                            OriginatorFlags = (uint)OriginatorFlag.SVHDX_ORIGINATOR_PVHDPARSER,
                             InitiatorHostName = initiatorHostName,
                             InitiatorHostNameLength = (ushort)(initiatorHostName.Length * 2)  // InitiatorHostName is a null-terminated Unicode UTF-16 string 
                         }
                     };
+                    foreach (Smb2CreateSvhdxOpenDeviceContext context in contexts)
+                    {
+                        logWriter.AddLog(LogLevel.Information, @"OpenSharedVirtualDisk request was sent with context: ");
+                        logWriter.AddLog(LogLevel.Information, @"Version: " + context.Version.ToString());
+                        logWriter.AddLog(LogLevel.Information, @"OriginatorFlags: " + context.OriginatorFlags.ToString());
+                        logWriter.AddLog(LogLevel.Information, @"InitiatorHostName: " + context.InitiatorHostName.ToString());
+                        logWriter.AddLog(LogLevel.Information, @"InitiatorHostNameLength: " + context.InitiatorHostNameLength.ToString());
+                    }
                 }
 
                 uint status;
@@ -121,12 +154,46 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                     out serverContexts,
                     out response);
 
+                logWriter.AddLog(LogLevel.Information, @"Get OpenSharedVirtualDisk response with status: " + status);
+
+                if (serverContexts == null)
+                {
+                    logWriter.AddLog(LogLevel.Information, @"The response does not contain any server contexts.");
+                }
+                else
+                {
+                    foreach (Smb2CreateContextResponse ctx in serverContexts)
+                    {
+                        Type type = ctx.GetType();
+                        if (type.Name == "Smb2CreateSvhdxOpenDeviceContextResponse")
+                        {
+                            logWriter.AddLog(LogLevel.Information, @"Server response context is Smb2CreateSvhdxOpenDeviceContextResponse. ");
+
+                            Smb2CreateSvhdxOpenDeviceContextResponse openDeviceContext = ctx as Smb2CreateSvhdxOpenDeviceContextResponse;
+                            logWriter.AddLog(LogLevel.Information, @"Version is: " + openDeviceContext.Version.ToString());
+                            logWriter.AddLog(LogLevel.Information, @"InitiatorHostName is: " + openDeviceContext.InitiatorHostName.ToString());
+                            logWriter.AddLog(LogLevel.Information, @"InitiatorHostNameLength is: " + openDeviceContext.InitiatorHostNameLength.ToString());
+                        }
+
+                        if (type.Name == "Smb2CreateSvhdxOpenDeviceContextResponseV2")
+                        {
+                            logWriter.AddLog(LogLevel.Information, @"Server response context is Smb2CreateSvhdxOpenDeviceContextResponseV2. ");
+
+                            Smb2CreateSvhdxOpenDeviceContextResponseV2 openDeviceContext = ctx as Smb2CreateSvhdxOpenDeviceContextResponseV2;
+                            logWriter.AddLog(LogLevel.Information, @"Version is: " + openDeviceContext.Version.ToString());
+                            logWriter.AddLog(LogLevel.Information, @"InitiatorHostName is: " + openDeviceContext.InitiatorHostName.ToString());
+                            logWriter.AddLog(LogLevel.Information, @"InitiatorHostNameLength is: " + openDeviceContext.InitiatorHostNameLength.ToString());
+                        }
+                    }
+                }
+
                 bool result = false;
 
                 if (status != Smb2Status.STATUS_SUCCESS)
                 {
                     result = false;
-                    logWriter.AddLog(LogLevel.Information, string.Format("{0} is found not supported.", version));
+                    logWriter.AddLog(LogLevel.Information, @"Get status " + status + @" from server response.");
+                    logWriter.AddLog(LogLevel.Information, @"The RSVD version " + version + @" is found not supported by server.");
                     return result;
                 }
 
@@ -153,46 +220,85 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
                 }
             }
 
-            foreach (var context in servercreatecontexts)
+            try
             {
-                Type type = context.GetType();
-                if (type.Name == "Smb2CreateSvhdxOpenDeviceContextResponse")
+                foreach (var context in servercreatecontexts)
                 {
-                    Smb2CreateSvhdxOpenDeviceContextResponse openDeviceContext = context as Smb2CreateSvhdxOpenDeviceContextResponse;
-                    if ((openDeviceContext != null) && (openDeviceContext.Version == (uint)expectVersion))
+                    Type type = context.GetType();
+                    if (type.Name == "Smb2CreateSvhdxOpenDeviceContextResponse")
                     {
-                        return true;
+                        Smb2CreateSvhdxOpenDeviceContextResponse openDeviceContext = context as Smb2CreateSvhdxOpenDeviceContextResponse;
+                        if ((openDeviceContext != null) && (openDeviceContext.Version == (uint)expectVersion))
+                        {
+                            return true;
+                        }
                     }
-
-                }
-
-                if (type.Name == "Smb2CreateSvhdxOpenDeviceContextResponseV2")
-                {
-                    Smb2CreateSvhdxOpenDeviceContextResponseV2 openDeviceContext = context as Smb2CreateSvhdxOpenDeviceContextResponseV2;
-                    if ((openDeviceContext != null) && (openDeviceContext.Version == (uint)expectVersion))
+                    
+                    if (type.Name == "Smb2CreateSvhdxOpenDeviceContextResponseV2")
                     {
-                        return true;
-                    }
+                        Smb2CreateSvhdxOpenDeviceContextResponseV2 openDeviceContext = context as Smb2CreateSvhdxOpenDeviceContextResponseV2;
+                        if ((openDeviceContext != null) && (openDeviceContext.Version == (uint)expectVersion))
+                        {
+                            return true;
+                        }
+                    }                    
                 }
             }
-
+            catch
+            {
+                return false;
+            }
             return false;
         }
 
-        private void CopyTestVHD(string vhdOnSharePath)
+        private void ConnectShareByNetUse(string sharePath)
+        {
+            Process process = new Process();
+            process.StartInfo.FileName = "net.exe";
+            process.StartInfo.Arguments = $"use {sharePath} {Credential.Password} /user:{Credential.DomainName}\\{Credential.AccountName}";
+            process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.CreateNoWindow = true;
+            process.Start();
+            process.WaitForExit();
+        }
+
+        private void CopyTestVHD(string sharePath, string vhdOnSharePath)
         {
             try
             {
+                ConnectShareByNetUse(sharePath);
+
                 if (System.IO.File.Exists(vhdOnSharePath))
                 {
                     return;
                 }
+
                 string vhdxPath = GetVhdSourcePath();
                 System.IO.File.Copy(vhdxPath, vhdOnSharePath);
             }
             catch (Exception e)
             {
                 throw new Exception("Copy test VHD file failed: " + e.Message);
+            }
+        }
+
+        private void DeleteTestVHD(string sharePath, string vhdOnSharePath)
+        {
+            try
+            {
+                ConnectShareByNetUse(sharePath);
+
+                if (!System.IO.File.Exists(vhdOnSharePath))
+                {
+                    return;
+                }
+
+                System.IO.File.Delete(vhdOnSharePath);
+            }
+            catch (Exception e)
+            {
+                throw new Exception("Delete test VHD file failed: " + e.Message);
             }
         }
 
@@ -207,6 +313,6 @@ namespace Microsoft.Protocols.TestManager.FileServerPlugin
             }
 
             return res;
-        }       
+        }
     }
 }

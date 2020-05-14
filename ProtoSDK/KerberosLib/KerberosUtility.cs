@@ -666,7 +666,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.Security.KerberosLib
         /// <returns>The computed result.</returns>
         public static byte[] RC4(byte[] key, byte[] data)
         {
-            RC4CryptoServiceProvider rc4Enc = new RC4CryptoServiceProvider();
+            RC4 rc4Enc = Microsoft.Protocols.TestTools.StackSdk.Security.Cryptographic.RC4.Create();
             byte[] result = new byte[data.Length];
             ICryptoTransform rc4Encrypt = rc4Enc.CreateEncryptor(key, null);
             rc4Encrypt.TransformBlock(data, 0, data.Length, result, 0);
@@ -954,6 +954,22 @@ namespace Microsoft.Protocols.TestTools.StackSdk.Security.KerberosLib
             }
         }
 
+        public static T DecodeNegotiationToken<T>(byte[] token) where T : class
+        {
+            var negotiationToken = new NegotiationToken();
+            negotiationToken.BerDecode(new Asn1DecodingBuffer(token));
+
+            var data = negotiationToken.GetData();
+            if (data is T)
+            {
+                return data as T;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
         public static byte[] EncodeInitialNegToken(byte[] token,
             KerberosConstValue.OidPkt oidPkt)
         {
@@ -969,13 +985,13 @@ namespace Microsoft.Protocols.TestTools.StackSdk.Security.KerberosLib
 
             MechTypeList mechTypeList = new MechTypeList(
                 new MechType[]
-                {                   
+                {
                     new MechType(oidInt)
                 }
                 );
 
             Asn1OctetString octetString = new Asn1OctetString(token);
-            NegTokenInit init = new NegTokenInit(mechTypeList, null, new Asn1OctetString(octetString.ByteArrayValue), new Asn1OctetString((byte[])null));
+            NegTokenInit init = new NegTokenInit(mechTypeList, null, new Asn1OctetString(octetString.ByteArrayValue), null);
 
             NegotiationToken negToken = new NegotiationToken(NegotiationToken.negTokenInit, init);
 
@@ -1018,7 +1034,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.Security.KerberosLib
             string messageDescription,
             DumpLevel dumpLevel,
             byte[] payload);
-        
+
         /// <summary>
         /// Occur when messages are ready for dumping
         /// </summary>

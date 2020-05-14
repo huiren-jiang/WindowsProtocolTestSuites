@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 using System.Data;
-using Microsoft.Protocols.TestTools.StackSdk.Security.Sspi;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Rsvd;
 using System.Net;
@@ -62,7 +62,7 @@ namespace Microsoft.Protocols.TestManager.Detector
             Prerequisites prerequisites = new Prerequisites();
 
             prerequisites.Title = "FileServer";
-            prerequisites.Summary = "Please input the below info to detect SUT.\r\nIf SUT is in WORKGROUP, leave Domain Name blank.";
+            prerequisites.Summary = "Please input the below info to detect SUT.\r\nIf SUT is in WORKGROUP, set it to the value of SutComputerName.\r\nIf SUT does not have a computer name, leave it blank.";
 
             Dictionary<string, List<string>> propertiesDic = new Dictionary<string, List<string>>();
 
@@ -183,7 +183,7 @@ namespace Microsoft.Protocols.TestManager.Detector
         public List<DetectingItem> GetDetectionSteps()
         {
             List<DetectingItem> DetectingItems = new List<DetectingItem>();
-            DetectingItems.Add(new DetectingItem("Ping Target SUT", DetectingStatus.Pending, LogStyle.Default));
+            DetectingItems.Add(new DetectingItem("Detect Target SUT Connection", DetectingStatus.Pending, LogStyle.Default));
             DetectingItems.Add(new DetectingItem("Fetch Local Network Info", DetectingStatus.Pending, LogStyle.Default));
             DetectingItems.Add(new DetectingItem("Fetch Smb2 Info", DetectingStatus.Pending, LogStyle.Default));
             DetectingItems.Add(new DetectingItem("Check the Credential", DetectingStatus.Pending, LogStyle.Default));
@@ -212,7 +212,7 @@ namespace Microsoft.Protocols.TestManager.Detector
                 detectionInfo.securityPackageType);
 
             // Terminate the whole detection if any exception happens in the following processes
-            if (!PingSUT(detector))
+            if (!DetectSUTConnection(detector))
                 return false;
 
             if (!DetectLocalNetworkInfo(detector))
@@ -325,6 +325,10 @@ namespace Microsoft.Protocols.TestManager.Detector
 
             propertiesDic.Add("Common.Platform", new List<string>() { detectionInfo.platform.ToString() });
             propertiesDic.Add("Common.SupportedSecurityPackage", new List<string>() { detectionInfo.securityPackageType.ToString() });
+
+            propertiesDic.Add("Common.SupportedCompressionAlgorithms", new List<string>() { String.Join(";", detectionInfo.smb2Info.SupportedCompressionAlgorithms.Select(compressionAlgorithm => compressionAlgorithm.ToString())) });
+
+            propertiesDic.Add("Common.IsChainedCompressionSupported", new List<string>() { detectionInfo.smb2Info.IsChainedCompressionSupported.ToString().ToLower() });
 
             #endregion
 
@@ -560,6 +564,8 @@ namespace Microsoft.Protocols.TestManager.Detector
             selectedRuleList.Add(CreateRule("Feature.Others.SMB2&3.FSCTL/IOCTL.FsctlOffloadReadWrite",
                 detectionInfo.F_CopyOffload[0] == DetectResult.Supported || detectionInfo.F_CopyOffload[1] == DetectResult.Supported));
 
+            selectedRuleList.Add(CreateRule("Feature.Others.SMB2&3.Compression", detectionInfo.smb2Info.SupportedCompressionAlgorithms.Length > 0));
+
             selectedRuleList.Add(CreateRule(
                 "Feature.Cluster Required.RSVD (Remote Shared Virtual Disk).RSVDVersion1",
                 (detectionInfo.RsvdSupport == DetectResult.Supported) &&
@@ -604,6 +610,7 @@ namespace Microsoft.Protocols.TestManager.Detector
             bool isRsvdSelected = false;
             bool isSqosSelected = false;
             bool isAuthSelected = false;
+            bool isHvrsSelected = false;
             foreach (CaseSelectRule rule in rules)
             {
                 string ruleName = rule.Name;
@@ -617,11 +624,24 @@ namespace Microsoft.Protocols.TestManager.Detector
                     {
                         isSMB2Selected = true;
                     }
-
+                    if (ruleName.Contains("HVRS"))
+                    {
+                        if (rule.Status == RuleStatus.Selected)
+                        {
+                            isHvrsSelected = true;
+                        }
+                    }
                 }
                 else if (ruleName.StartsWith("Feature.Others.FSA (File System Algorithms)") && rule.Status == RuleStatus.Selected)
                 {
                     isFsaSelected = true;
+                    if (ruleName.Contains("HVRS"))
+                    {
+                        if (rule.Status == RuleStatus.Selected)
+                        {
+                            isHvrsSelected = true;
+                        }
+                    }
                 }
                 else if ((ruleName == "Feature.Cluster Required.File Server Failover"
                     || ruleName == "Feature.Cluster Required.SWN (Service Witness)"
@@ -670,6 +690,14 @@ namespace Microsoft.Protocols.TestManager.Detector
             {
                 hiddenPropertiesList.AddRange(DetectorUtil.GetPropertiesByFile("MS-SMB2_ServerTestSuite.deployment.ptfconfig"));
                 hiddenPropertiesList.AddRange(DetectorUtil.GetPropertiesByFile("MS-SMB2Model_ServerTestSuite.deployment.ptfconfig"));
+
+                // HVRS properties are located in MS-SMB2_ServerTestSuite.deployment.ptfconfig
+                // If both FSA and HVRS are selected, show HVRS properties in Configure Test Cases
+                if (isFsaSelected && isHvrsSelected)
+                {
+                    Predicate<string> HvrsProperties = delegate (string s) { return s.StartsWith("HVRS"); };
+                    hiddenPropertiesList.RemoveAll(HvrsProperties);
+                }
             }
             else
             {
@@ -717,6 +745,15 @@ namespace Microsoft.Protocols.TestManager.Detector
                 {
                     // Add the property whose value is false (false means the property should be hidden)
                     hiddenPropertiesList.AddRange(dependantProperties.Where(q => !q.Value).Select(q => q.Key));
+                }
+
+                // HVRS properties are located in MS-SMB2_ServerTestSuite.deployment.ptfconfig
+                // If SMB2 is selected but HVRS is not selected, only show SMB2 properties in Configure Test Cases
+                if (!isHvrsSelected)
+                {
+                    hiddenPropertiesList.AddRange(DetectorUtil.GetPropertiesByFile("MS-SMB2_ServerTestSuite.deployment.ptfconfig"));
+                    Predicate<string> Smb2Properties = delegate (string s) { return s.StartsWith("SMB2"); };
+                    hiddenPropertiesList.RemoveAll(Smb2Properties);
                 }
             }
 
@@ -794,13 +831,13 @@ namespace Microsoft.Protocols.TestManager.Detector
 
         #region Helper functions for Detecting SUT Info
 
-        private bool PingSUT(FSDetector detector)
+        private bool DetectSUTConnection(FSDetector detector)
         {
-            logWriter.AddLog(LogLevel.Information, "===== Ping Target SUT =====");
+            logWriter.AddLog(LogLevel.Information, "===== Detect Target SUT Connection=====");
 
             try
             {
-                detectionInfo.networkInfo = detector.PingTargetSUT();
+                detectionInfo.networkInfo = detector.DetectSUTConnection();
             }
             catch (Exception ex)
             {

@@ -18,22 +18,15 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
     {
         [TestMethod]
         [Priority(0)]
+        [TestCategory("BVT")]
         [TestCategory("RDP8.1")]
         [TestCategory("RDPBCGR")]
         [Description(@"This test case is used to verify SUT can send Heartbeat PDU periodically to notify the connection exist. ")]
         public void S8_HealthMonitoring_PositiveTest()
         {
-            string rdpVersion = this.Site.Properties["RDP.Version"];
-            if (!string.IsNullOrEmpty(rdpVersion))
+            if (testConfig.rdpVersion.CompareTo(new Version("8.1")) < 0) // RDP Version is bellow 8.1
             {
-                Version rdpVer = new Version(rdpVersion);
-                Version win81Ver = new Version("8.1");
-
-                var result = rdpVer.CompareTo(win81Ver);
-                if (result < 0) // RDP Version is bellow 8.1(Windows Server 2012R2)
-                {
-                    Site.Assert.Inconclusive("Skip this test case as RDP in Windows Server 2012 is RDP 8.0 and not support Heartbeat PDU.");
-                }
+                Site.Assert.Inconclusive("Skip this test case as RDP version before 8.1 does not support Heartbeat PDU.");
             }
 
             #region Test Steps
@@ -44,11 +37,11 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             #region Test Code
             this.Site.Log.Add(LogEntryKind.Comment, "To test Health Monitoring, the RDP server should be configured to support heartbeat PDU.");
 
-            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", transportProtocol.ToString());
-            rdpbcgrAdapter.ConnectToServer(this.transportProtocol);
+            this.Site.Log.Add(LogEntryKind.Comment, "Establish transport connection with RDP Server, encrypted protocol is {0}.", testConfig.transportProtocol.ToString());
+            rdpbcgrAdapter.ConnectToServer(testConfig.transportProtocol);
 
             string[] SVCNames = new string[] { RdpConstValue.SVCNAME_RDPEDYC };
-            rdpbcgrAdapter.EstablishRDPConnection(requestProtocol, SVCNames, CompressionType.PACKET_COMPR_TYPE_NONE,
+            rdpbcgrAdapter.EstablishRDPConnection(testConfig.requestProtocol, SVCNames, CompressionType.PACKET_COMPR_TYPE_NONE,
                 false, // Is reconnect
                 true,  // Is auto logon
                 supportHeartbeatPDU: true);
@@ -58,7 +51,7 @@ namespace Microsoft.Protocols.TestSuites.Rdpbcgr
             DateTime startTime = DateTime.Now;
             for (int i = 0; i < times + 1; i++)
             {
-                Server_Heartbeat_PDU heartbeatPdu = rdpbcgrAdapter.ExpectPacket<Server_Heartbeat_PDU>(timeout);
+                Server_Heartbeat_PDU heartbeatPdu = rdpbcgrAdapter.ExpectPacket<Server_Heartbeat_PDU>(testConfig.timeout);
                 Site.Assert.IsNotNull(heartbeatPdu, "RDP Server MUST send heartbeat PDU periodly if it support heartbeat PDU.");
                 period = heartbeatPdu.period;
                 if (i == 0)

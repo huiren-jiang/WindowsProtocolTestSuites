@@ -30,6 +30,10 @@
       <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2.pdb"/>
       <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Security.Sspi.dll"/>
       <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Security.Sspi.pdb"/>
+      <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib.dll"/>
+      <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib.pdb"/>
+      <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Security.SspiService.dll"/>
+      <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Security.SspiService.pdb"/>
       <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Transport.dll"/>
       <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Transport.pdb"/>
       <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Security.Pac.dll"/>
@@ -52,6 +56,8 @@
       <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb.pdb"/>
       <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Security.Nrpc.dll"/>
       <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Security.Nrpc.pdb"/>
+      <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Compression.Xpress.dll"/>
+      <ComponentRef Id="Microsoft.Protocols.TestTools.StackSdk.Compression.Xpress.pdb"/>
     </ComponentGroup>
 
     <DirectoryRef Id="TESTSUITE_BIN_DIR">
@@ -125,6 +131,18 @@
       <Component Id="Microsoft.Protocols.TestTools.StackSdk.Security.Sspi.pdb" Guid="{514E9607-4302-4F72-A458-876CD7E44024}">
         <File Id="filA167A924CD3EC7665DEFDD34DDDBF574" Source="$(var.PROTOSDK_SYMBOLS_DIR)\Microsoft.Protocols.TestTools.StackSdk.Security.Sspi.pdb" />
       </Component>
+      <Component Id="Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib.dll" Guid="{8C1711D1-6C08-410D-A905-BAD4340DA6EA}">
+        <File Id="filDDC6FE2092E34514A0414EBB94C27EC9" Source="!(wix.PROTOSDK_DROP_DIR)\Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib.dll" />
+      </Component>
+      <Component Id="Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib.pdb" Guid="{601D331B-F03F-4801-A3B5-1511B0E0CDD2}">
+        <File Id="filF8E59E2A4EAE40AE87DE61F16EBF9044" Source="$(var.PROTOSDK_SYMBOLS_DIR)\Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib.pdb" />
+      </Component>
+      <Component Id="Microsoft.Protocols.TestTools.StackSdk.Security.SspiService.dll" Guid="{8D9344FE-24C3-4D29-95E6-24EBBB8D628E}">
+        <File Id="filD22B8D594C534B789768B1D46A064870" Source="!(wix.PROTOSDK_DROP_DIR)\Microsoft.Protocols.TestTools.StackSdk.Security.SspiService.dll" />
+      </Component>
+      <Component Id="Microsoft.Protocols.TestTools.StackSdk.Security.SspiService.pdb" Guid="{CA72E5B7-F287-4968-88F1-C9AFF7721468}">
+        <File Id="fil74F224B0085F4B719CA6AE2A63C248DA" Source="$(var.PROTOSDK_SYMBOLS_DIR)\Microsoft.Protocols.TestTools.StackSdk.Security.SspiService.pdb" />
+      </Component>
       <Component Id="Microsoft.Protocols.TestTools.StackSdk.Transport.dll" Guid="{A94E2BAF-C495-4D5C-BC89-54853EC418E1}">
         <File Id="filFFD4EA5E8E1224E1A49A8648E3B56B21" Source="!(wix.PROTOSDK_DROP_DIR)\Microsoft.Protocols.TestTools.StackSdk.Transport.dll" />
       </Component>
@@ -190,7 +208,13 @@
       </Component>
       <Component Id="Microsoft.Protocols.TestTools.StackSdk.Security.Nrpc.pdb" Guid="{8DAF9457-E0C1-4894-9D89-2004E4B95EAE}">
         <File Id="filEE411704CD9A0C84C1E5431117125790" Source="$(var.PROTOSDK_SYMBOLS_DIR)\Microsoft.Protocols.TestTools.StackSdk.Security.Nrpc.pdb" />
-      </Component>	  
+      </Component>
+      <Component Id="Microsoft.Protocols.TestTools.StackSdk.Compression.Xpress.dll" Guid="{4E98D7F9-9DF2-467F-8AD1-911CE8866A5D}">
+        <File Id="fil24BD719DB3E24F578F75F0D6C50A7D05" Source="!(wix.PROTOSDK_DROP_DIR)\Microsoft.Protocols.TestTools.StackSdk.Compression.Xpress.dll" />
+      </Component>
+      <Component Id="Microsoft.Protocols.TestTools.StackSdk.Compression.Xpress.pdb" Guid="{D76A9A53-5233-4414-A9CA-742E881BFBDA}">
+        <File Id="fil85ADB540D94348E290460CD3A0E66C5A" Source="$(var.PROTOSDK_SYMBOLS_DIR)\Microsoft.Protocols.TestTools.StackSdk.Compression.Xpress.pdb" />
+      </Component>
     </DirectoryRef>
   </Fragment>
 </Wix>

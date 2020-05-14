@@ -28,6 +28,8 @@ Param
 
     [string]$WorkingPath = "C:\temp" 
 )
+$newEnvPath=$env:Path+";.\;.\scripts\"
+$env:Path=$newEnvPath
 
 #------------------------------------------------------------------------------------------
 # Global Variables:
@@ -43,7 +45,6 @@ $ScriptFileFullPath      = $MyInvocation.MyCommand.Definition
 $ScriptName              = [System.IO.Path]::GetFileName($ScriptFileFullPath)
 $SignalFileFullPath      = "$WorkingPath\Config-AP02.finished.signal"
 $LogFileFullPath         = "$ScriptFileFullPath.log"
-$Parameters              = @{}
 $DataFile                = "$WorkingPath\Scripts\ParamConfig.xml"
 [xml]$KrbParams          = $null
 
@@ -101,11 +102,6 @@ Function Write-ConfigLog
 #------------------------------------------------------------------------------------------
 Function Read-ConfigParameters()
 {
-    Write-ConfigLog "Getting the parameters from environment config file..." -ForegroundColor Yellow
-    $VMName = .\GetVMNameByComputerName.ps1
-    .\GetVmParameters.ps1 -VMName $VMName -RefParamArray ([ref]$Parameters)
-    $Parameters
-
     Write-ConfigLog "Getting the parameters from Kerberos config file..." -ForegroundColor Yellow
     if(Test-Path -Path $DataFile)
     {
@@ -131,10 +127,9 @@ Function Init-Environment()
 
     # Switch to the script path
     Write-ConfigLog "Switching to $WorkingPath..." -ForegroundColor Yellow
-    Push-Location $WorkingPath
 
     # Update ParamConfig.xml
-    .\Scripts\UpdateConfigFile.ps1
+    UpdateConfigFile.ps1 -WorkingPath $WorkingPath
 
     # Read the config parameters
     Read-ConfigParameters
@@ -156,7 +151,7 @@ Function Complete-Configure
     Stop-Transcript
 
     # remove the schedule task to execute the script next step after restart
-    .\RestartAndRunFinish.ps1
+    RestartAndRunFinish.ps1
 }
 
 #------------------------------------------------------------------------------------------
@@ -240,33 +235,24 @@ Function Config-AP02()
 	# Enable compound identity to the file server
 	#-----------------------------------------------------------------------------------------------
 
-	$IsCompoundEnable= '$true'
-	$FileServerName= $KrbParams.Parameters.TrustRealm.FileShare.NetBiosName
+	# Enable compound identity for file server 
+    # This command will be run every 2 minutes to make sure the configuration does not expire
 
-	# The command to run after restart
-	$Command= "cmd /c powershell Set-ADComputer -Identity $FileServerName -CompoundIdentitySupported $IsCompoundEnable"
+    $FileServerName= $KrbParams.Parameters.TrustRealm.FileShare.NetBiosName 
 
-	#restart and run command 
-	Write-ConfigLog "Computer must restart now..." -ForegroundColor Red
-	$regRunPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" 
-	$regKeyName = "TKFRSAR"
+    $TaskName ="EnableCompoundIdentity"
+    
+    $Command = "Set-ADComputer -Identity $FileServerName -CompoundIdentitySupported 1" 
+    
+    $Task = "PowerShell $Command"
 
-	# If the key has already been set, remove it
-	if (((Get-ItemProperty $regRunPath).$regKeyName) -ne $null)
-	{
-		Remove-ItemProperty -Path $regRunPath -Name $regKeyName
-	}
-
-	try
-	{
-		Set-ItemProperty -Path $regRunPath -Name $regKeyName `
-							-Value "$Command" `
-							-Force -ErrorAction Stop
-	}
-	catch
-	{
-		throw "Unable to set registry key $regKeyName. Error happened: $_.Exception.Message"
-	}
+    # Create task
+    cmd /c schtasks /Create /RL HIGHEST /RU Administrators /SC onstart /TN $TaskName /TR $Task /IT /F
+    cmd /c schtasks /Change /RI 2 /TN $TaskName /RU Administrators
+    Sleep 10
+    
+    # Run task
+    cmd /c schtasks /Run /TN $TaskName  
 }
 
 #------------------------------------------------------------------------------------------

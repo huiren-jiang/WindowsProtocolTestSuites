@@ -3,13 +3,14 @@
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
     <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
     <title>Test Environment</title>
     <style>
         div.Title
         {
             font-family: Arial;
             font-size: larger;
-            margin-bottom: 10px;
+            margin-bottom: 0.625rem;
         }
 
         div.Context
@@ -24,13 +25,13 @@
             font-family: 'Segoe UI';
             font-size: medium;
             font-weight: bold;
-            margin-top: 10px;
+            margin-top: 0.625rem;
             text-align: center;
         }
 
         .List
         {
-            margin-top: 4px;
+            margin-top: 0.25rem;
         }
 
         .img
@@ -44,33 +45,34 @@
 <p>
 	You can run this test suite in a workgroup or domain environment using either physical or virtual machines. This section describes the test environment
 	using physical computers. For information about configuring a virtual machine, see
-	<a href="http://www.microsoft.com/virtualization/en/us/solution-appliance-test.aspx">
-		http://www.microsoft.com/virtualization/en/us/solution-appliance-test.aspx
-	</a>
+    <a href="https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/quick-start/create-virtual-machine">
+        https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/quick-start/create-virtual-machine
+    </a>
 	.
 </p>
 <h3>
 	Domain Environment
 </h3>
 <p>
-	The domain environment requires interactions between the following computers and server roles. Note that the domain controller, required for a domain
-	environment, can be installed on the SUT.
+	The domain environment requires interactions between the following computers and server roles. Note that the domain controller, required for a domain environment, can be installed on the SUT.
+	
 </p>
 <ul>
 	<li>
 		<p>
-			The driver computer, which runs the test cases by sending requests over the wire in the form of protocol messages.
+			The Driver Computer, which runs the test cases by sending requests over the wire in the form of protocol messages.
 		</p>
 	</li>
 	<li>
 		<p>
-			The SUT, which runs a Server implementation of the protocol that is being tested. The SUT responds to the requests sent by the driver computer.
+			The SUT, which runs a server implementation of the protocol that is being tested. The SUT responds to the requests sent by the driver computer.
+
+			Note: if you want to test [MS-RDPELE] protocol, then SUT must be connected to internet besides the test network.
 		</p>
 	</li>
 	<li>
 		<p>
-			The DC provides functionality that is required to test the protocol implementation. Specifically, the DC hosts Active Directory Domain Services (AD
-			DS).
+			The DC provides functionality that is required to test the protocol implementation. Specifically, the DC hosts Active Directory Domain Services (AD DS).
 		</p>
 	</li>
 </ul>
@@ -92,12 +94,14 @@
 <ul>
 	<li>
 		<p>
-			The driver computer, which runs the test cases by sending requests over the wire in the form of protocol messages.
+			The Driver Computer, which runs the test cases by sending requests over the wire in the form of protocol messages.
 		</p>
 	</li>
 	<li>
 		<p>
 			The SUT, which runs a Server implementation of the protocol that is being tested. The SUT responds to the requests that the driver computer sends.
+			
+			Note: if you want to test [MS-RDPELE] protocol, then SUT must be connected to internet besides the test network.
 		</p>
 	</li>
 </ul>
@@ -111,7 +115,7 @@
 <div style="clear:both" />
 
 <div class="icon" style="float:left">
-    <img class="img" src="arrow_right.png" /><a href="configure.html">Configure Environment</a>
+    <img class="img" src="arrow_right.png" /><a href="configure.html">Configure Environment</a>                                            
 </div>
 </div>
 </body>

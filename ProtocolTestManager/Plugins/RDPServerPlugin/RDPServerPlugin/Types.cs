@@ -1,10 +1,7 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-using System;
+using Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using Microsoft.Protocols.TestManager.Detector;
 
 namespace Microsoft.Protocols.TestManager.RDPServerPlugin
 {
@@ -21,21 +18,19 @@ namespace Microsoft.Protocols.TestManager.RDPServerPlugin
     {
         // Parameters for Detecting
         public string SUTName;
-        public string UserNameInTC;
-        public string UserPwdInTC;
-        public string IsWindowsImplementation;
-        public string DropConnectionForInvalidRequest;
-        public int AgentListenPort;
-        public TriggerMethod TriggerMethod;
-                
+        public string DomainName;
+        public string UserName;
+        public string Port;
+
         // Detect Result
+        public TS_UD_SC_CORE_version_Values Version;
+
         public bool? IsSupportAutoReconnect;
-        public bool? IsSupportServerRedirection;
-        public bool? IsSupportNetcharAutoDetect;
-        public bool? IsSupportHeartbeatPdu;
-        public bool? IsSupportStaticVirtualChannel;
-        
-        public bool? IsSupportRDPEUDP;
+        public bool? IsSupportFastPathInput;
+
+        public bool IsSupportRDPEDYC = false;
+        public bool IsSupportRDPEMT = false;
+        public bool IsSupportRDPELE = false;
     }
 
     public class ResultItemMap

@@ -270,6 +270,26 @@
           To specify which requirements checking will be disabled in test case.
         </Description>
       </Property>
+
+      <Property name="Is64bitFileIdSupported" value="true">
+        <Choice>true, false</Choice>
+        <Description>
+          To specify whether 64-bit FileId is supported or not.
+        </Description>
+      </Property>
+      
+      <Property name="IsChangeTimeSupported" value="true">
+        <Choice>true, false</Choice>
+        <Description>
+          To specify whether ChangeTime is supported or not.
+        </Description>
+      </Property>
+
+      <Property name="FSCC_UnSupportedFSCTL" value="">
+        <Description>
+          To specify the FSCTL (defined in [MS-FSCC] section 2.3) that the SUT does not support.
+        </Description>
+      </Property>
     </Group>
   </Properties>
 </TestSite>

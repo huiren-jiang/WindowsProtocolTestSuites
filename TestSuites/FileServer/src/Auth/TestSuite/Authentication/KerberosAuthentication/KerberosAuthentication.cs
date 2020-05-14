@@ -8,9 +8,14 @@ using Microsoft.Protocols.TestTools.StackSdk.Asn1;
 using Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Smb2;
 using Microsoft.Protocols.TestTools.StackSdk.Security.Cryptographic;
 using Microsoft.Protocols.TestTools.StackSdk.Security.KerberosLib;
+using Microsoft.Protocols.TestTools.StackSdk.Security.Spng;
+using Microsoft.Protocols.TestTools.StackSdk.Security.Sspi;
+using Microsoft.Protocols.TestTools.StackSdk.Security.SspiLib;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
+using System.Collections.Generic;
 using System.DirectoryServices.ActiveDirectory;
+using System.Linq;
 
 namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
 {
@@ -35,7 +40,13 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
             AUTHDATA_UNKNOWN_TYPE_IN_TKT_OPTIONAL = 1 << 11,
             AUTHDATA_UNKNOWN_TYPE_IN_AUTHENTICATOR = 1 << 12,
             AUTHDATA_UNKNOWN_TYPE_IN_AUTHENTICATOR_OPTIONAL = 1 << 13,
+            NEGOTIATE_ADD_MECHLISTMIC = 1 << 14,
+            NEGOTIATE_WRONG_CHECKSUM_IN_MECHLISTMIC = 1 << 15,
         }
+
+        private Smb2FunctionalClientForKerbAuth smb2Client;
+
+        private Smb2FunctionalClientForKerbAuth smb2Client2;
 
         public const int DefaultKdcPort = 88;
 
@@ -94,10 +105,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
 
             switch (TestConfig.DefaultSecurityPackage)
             {
-                case TestTools.StackSdk.Security.Sspi.SecurityPackageType.Negotiate:
+                case SecurityPackageType.Negotiate:
                     GssToken = KerberosConstValue.GSSToken.GSSSPNG;
                     break;
-                case TestTools.StackSdk.Security.Sspi.SecurityPackageType.Kerberos:
+                case SecurityPackageType.Kerberos:
                     GssToken = KerberosConstValue.GSSToken.GSSAPI;
                     break;
                 default:
@@ -105,10 +116,24 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
                         TestConfig.DefaultSecurityPackage);
                     break;
             }
+
+            smb2Client = null;
+
+            smb2Client2 = null;
         }
 
         protected override void TestCleanup()
         {
+            if (smb2Client != null)
+            {
+                smb2Client.Disconnect();
+            }
+
+            if (smb2Client2 != null)
+            {
+                smb2Client2.Disconnect();
+            }
+
             base.TestCleanup();
         }
         #endregion
@@ -403,12 +428,12 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Create GSS Token");
             byte[] token = KerberosUtility.AddGssApiTokenHeader(request, OidPkt, GssToken);
 
-            Smb2FunctionalClientForKerbAuth smb2Client = new Smb2FunctionalClientForKerbAuth(TestConfig.Timeout, TestConfig, BaseTestSite);
+            smb2Client = new Smb2FunctionalClientForKerbAuth(TestConfig.Timeout, TestConfig, BaseTestSite);
             smb2Client.ConnectToServer(TestConfig.UnderlyingTransport, TestConfig.SutComputerName, TestConfig.SutIPAddress);
             byte[] repToken;
 
             uint status = DoSessionSetupWithGssToken(smb2Client, token, out repToken);
-            
+
             KerberosApResponse apRep = kerberosClient.GetApResponseFromToken(repToken, GssToken);
             // Get subkey from AP response, which used for signing in smb2
             BaseTestSite.Log.Add(LogEntryKind.Debug,
@@ -428,7 +453,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
 
             #region Second client
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Replay the request from another client");
-            Smb2FunctionalClientForKerbAuth smb2Client2 = new Smb2FunctionalClientForKerbAuth(TestConfig.Timeout, TestConfig, BaseTestSite);
+            smb2Client2 = new Smb2FunctionalClientForKerbAuth(TestConfig.Timeout, TestConfig, BaseTestSite);
             smb2Client2.ConnectToServer(TestConfig.UnderlyingTransport, TestConfig.SutComputerName, TestConfig.SutIPAddress);
             status = DoSessionSetupWithGssToken(smb2Client2, token, out repToken);
 
@@ -436,23 +461,45 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
             @" [RFC 4120] 3.2.2.  Generation of a KRB_AP_REQ Message
             Authenticators MUST NOT be re - used and SHOULD be rejected if replayed to a server.");
 
-             BaseTestSite.Assert.AreNotEqual(Smb2Status.STATUS_SUCCESS, status,
-                "Session Setup should fail because it uses a Replay of KRB_AP_REQ");
+            BaseTestSite.Assert.AreNotEqual(Smb2Status.STATUS_SUCCESS, status,
+               "Session Setup should fail because it uses a Replay of KRB_AP_REQ");
 
             if (TestConfig.IsWindowsPlatform)
             {
-                krbError = kerberosClient.GetKrbErrorFromToken(repToken);
+                krbError = kerberosClient.GetKrbErrorFromToken(repToken, GssToken);
                 BaseTestSite.Assert.AreEqual(KRB_ERROR_CODE.KRB_AP_ERR_REPEAT, krbError.ErrorCode,
                     "SMB Server should return {0}", KRB_ERROR_CODE.KRB_AP_ERR_REPEAT);
             }
-            smb2Client2.Disconnect();
             #endregion
 
             string path = Smb2Utility.GetUncPath(TestConfig.SutComputerName, TestConfig.BasicFileShare);
             AccessFile(smb2Client, path);
 
             smb2Client.LogOff();
-            smb2Client.Disconnect();
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Auth)]
+        [TestCategory(TestCategories.KerberosAuthentication)]
+        [TestCategory(TestCategories.NonSmb)]
+        [TestCategory(TestCategories.Positive)]
+        [Description("This test case is designed to test whether server can handle mechListMIC in the negTokenInit correctly.")]
+        public void KerbAuth_Negotiate_MechListMIC_Exchange()
+        {
+            LoadConfig();
+            Smb2KerberosAuthentication(CaseVariant.NEGOTIATE_ADD_MECHLISTMIC);
+        }
+
+        [TestMethod]
+        [TestCategory(TestCategories.Auth)]
+        [TestCategory(TestCategories.KerberosAuthentication)]
+        [TestCategory(TestCategories.NonSmb)]
+        [TestCategory(TestCategories.UnexpectedFields)]
+        [Description("This test case is designed to test whether server can handle mechListMIC with invalid checksum in the negTokenInit correctly.")]
+        public void KerbAuth_Negotiate_MechListMIC_InvalidChecksum()
+        {
+            LoadConfig();
+            Smb2KerberosAuthentication(CaseVariant.NEGOTIATE_ADD_MECHLISTMIC | CaseVariant.NEGOTIATE_WRONG_CHECKSUM_IN_MECHLISTMIC);
         }
 
         private void LoadConfig()
@@ -476,6 +523,13 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
 
         private void Smb2KerberosAuthentication(CaseVariant variant)
         {
+            #region Prerequisites check
+            if (variant.HasFlag(CaseVariant.NEGOTIATE_ADD_MECHLISTMIC))
+            {
+                BaseTestSite.Assume.AreEqual(SecurityPackageType.Negotiate, TestConfig.DefaultSecurityPackage, "The mechListMIC field is used by GSS-API negotiation mechanism, so Negotiate should be used as the SupportedSecurityPackage.");
+            }
+            #endregion
+
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Initialize Kerberos Functional Client");
             KerberosFunctionalClient kerberosClient = new KerberosFunctionalClient(
                 TestConfig.DomainName,
@@ -660,14 +714,32 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
             BaseTestSite.Log.Add(LogEntryKind.TestStep, "Create GSS Token");
             byte[] token = KerberosUtility.AddGssApiTokenHeader(request, OidPkt, GssToken);
 
-            Smb2FunctionalClientForKerbAuth smb2Client = new Smb2FunctionalClientForKerbAuth(TestConfig.Timeout, TestConfig, BaseTestSite);
+            if (variant.HasFlag(CaseVariant.NEGOTIATE_ADD_MECHLISTMIC))
+            {
+                BaseTestSite.Log.Add(LogEntryKind.Debug, "Create GSS Token with mechListMIC added to negTokenInit.");
+
+                var sequenceNumberForMICToken = request.Authenticator.seq_number.Value.Value;
+                var keyForMICToken = subkey;
+                Func<KerberosMICToken, KerberosMICToken> mechListMICModifier = delegate (KerberosMICToken micToken)
+                {
+                    if (variant.HasFlag(CaseVariant.NEGOTIATE_WRONG_CHECKSUM_IN_MECHLISTMIC))
+                    {
+                        // Reverse each byte in checksum
+                        micToken.SGN_CKSUM = micToken.SGN_CKSUM.Select(x => (byte)~x).ToArray();
+                    }
+                    return micToken;
+                };
+                token = AddMICTokenToGssApiToken(token, sequenceNumberForMICToken, keyForMICToken, mechListMICModifier);
+            }
+
+            smb2Client = new Smb2FunctionalClientForKerbAuth(TestConfig.Timeout, TestConfig, BaseTestSite);
             smb2Client.ConnectToServer(TestConfig.UnderlyingTransport, TestConfig.SutComputerName, TestConfig.SutIPAddress);
 
             #region Check the result
 
             byte[] repToken;
             uint status = DoSessionSetupWithGssToken(smb2Client, token, out repToken);
-           
+
             if (variant.HasFlag(CaseVariant.AUTHENTICATOR_CNAME_NOT_MATCH) || variant.HasFlag(CaseVariant.AUTHENTICATOR_CREALM_NOT_MATCH))
             {
                 BaseTestSite.Log.Add(LogEntryKind.Debug,
@@ -681,11 +753,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
                     "Session Setup should fail because the cname or crealm in the authenticator does not match the same field in the Ticket");
                 if (TestConfig.IsWindowsPlatform)
                 {
-                    KerberosKrbError krbError = kerberosClient.GetKrbErrorFromToken(repToken);
+                    KerberosKrbError krbError = kerberosClient.GetKrbErrorFromToken(repToken, GssToken);
                     BaseTestSite.Assert.AreEqual(KRB_ERROR_CODE.KRB_AP_ERR_BADMATCH, krbError.ErrorCode,
                         "SMB Server should return {0}", KRB_ERROR_CODE.KRB_AP_ERR_BADMATCH);
                 }
-                smb2Client.Disconnect();
                 return;
             }
             if (variant.HasFlag(CaseVariant.AUTHENTICATOR_WRONG_ENC_KEY) || variant.HasFlag(CaseVariant.TICKET_WRONG_ENC_KEY))
@@ -699,11 +770,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
                     "Session Setup should fail because Ticket or Authenticator cannot be correctly decrypted");
                 if (TestConfig.IsWindowsPlatform)
                 {
-                    KerberosKrbError krbError = kerberosClient.GetKrbErrorFromToken(repToken);
+                    KerberosKrbError krbError = kerberosClient.GetKrbErrorFromToken(repToken, GssToken);
                     BaseTestSite.Assert.AreEqual(KRB_ERROR_CODE.KRB_AP_ERR_MODIFIED, krbError.ErrorCode,
                         "SMB Server should return {0}", KRB_ERROR_CODE.KRB_AP_ERR_MODIFIED);
                 }
-                smb2Client.Disconnect();
                 return;
             }
             if (variant.HasFlag(CaseVariant.AUTHENTICATOR_EXCEED_TIME_SKEW))
@@ -715,16 +785,15 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
                 allowable clock skew(e.g., 5 minutes), the KRB_AP_ERR_SKEW error is
                 returned.");
 
-               BaseTestSite.Assert.AreNotEqual(Smb2Status.STATUS_SUCCESS, status,
-                    "Session Setup should fail because the server time and the client time " +
-                    "in the Authenticator differ by (1 hour) more than the allowable clock skew");
+                BaseTestSite.Assert.AreNotEqual(Smb2Status.STATUS_SUCCESS, status,
+                     "Session Setup should fail because the server time and the client time " +
+                     "in the Authenticator differ by (1 hour) more than the allowable clock skew");
                 if (TestConfig.IsWindowsPlatform)
                 {
-                    KerberosKrbError krbError = kerberosClient.GetKrbErrorFromToken(repToken);
+                    KerberosKrbError krbError = kerberosClient.GetKrbErrorFromToken(repToken, GssToken);
                     BaseTestSite.Assert.AreEqual(KRB_ERROR_CODE.KRB_AP_ERR_SKEW, krbError.ErrorCode,
                         "SMB Server should return {0}", KRB_ERROR_CODE.KRB_AP_ERR_SKEW);
                 }
-                smb2Client.Disconnect();
                 return;
             }
             if (variant.HasFlag(CaseVariant.TICKET_WRONG_KVNO) ||
@@ -747,11 +816,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
                     "is later than the current time by more than the allowable clock skew");
                 if (TestConfig.IsWindowsPlatform)
                 {
-                    KerberosKrbError krbError = kerberosClient.GetKrbErrorFromToken(repToken);
+                    KerberosKrbError krbError = kerberosClient.GetKrbErrorFromToken(repToken, GssToken);
                     BaseTestSite.Assert.AreEqual(KRB_ERROR_CODE.KRB_AP_ERR_TKT_NYV, krbError.ErrorCode,
                         "SMB Server should return {0}", KRB_ERROR_CODE.KRB_AP_ERR_TKT_NYV);
                 }
-                smb2Client.Disconnect();
                 return;
             }
             if (variant.HasFlag(CaseVariant.TICKET_EXPIRED))
@@ -766,18 +834,16 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
                     " in the Ticket by more than the allowable clock skew");
                 if (TestConfig.IsWindowsPlatform)
                 {
-                    KerberosKrbError krbError = kerberosClient.GetKrbErrorFromToken(repToken);
+                    KerberosKrbError krbError = kerberosClient.GetKrbErrorFromToken(repToken, GssToken);
                     BaseTestSite.Assert.AreEqual(KRB_ERROR_CODE.KRB_AP_ERR_TKT_EXPIRED, krbError.ErrorCode,
                         "SMB Server should return {0}", KRB_ERROR_CODE.KRB_AP_ERR_TKT_EXPIRED);
                 }
-                smb2Client.Disconnect();
                 return;
             }
             if (variant.HasFlag(CaseVariant.AUTHDATA_UNKNOWN_TYPE_IN_TKT))
             {
                 BaseTestSite.Assert.AreNotEqual(Smb2Status.STATUS_SUCCESS, status,
                     "Session Setup should fail because of the unknown AutherizationData in the ticket");
-                smb2Client.Disconnect();
                 return;
             }
             if (variant.HasFlag(CaseVariant.AUTHDATA_UNKNOWN_TYPE_IN_AUTHENTICATOR))
@@ -790,6 +856,24 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
             {
                 BaseTestSite.Log.Add(LogEntryKind.Comment, "Unknown AuthorizationData in AD_IF_RELEVANT is optional. " +
                                                            "Server should not fail the request.");
+            }
+            if (variant.HasFlag(CaseVariant.NEGOTIATE_ADD_MECHLISTMIC))
+            {
+                if (variant.HasFlag(CaseVariant.NEGOTIATE_WRONG_CHECKSUM_IN_MECHLISTMIC))
+                {
+                    BaseTestSite.Assert.AreNotEqual(Smb2Status.STATUS_SUCCESS, status,
+                        "Session Setup should fail because of the mechListMIC with invalid checksum in the negTokenInit.");
+                    return;
+                }
+                else
+                {
+                    BaseTestSite.Assert.AreEqual(Smb2Status.STATUS_SUCCESS, status, "Session Setup should success if mechListMIC is exchanged normally.");
+                }
+            }
+
+            if (variant == CaseVariant.NONE)
+            {
+                BaseTestSite.Assert.AreEqual(Smb2Status.STATUS_SUCCESS, status, "Session Setup should success.");
             }
 
             KerberosApResponse apRep = kerberosClient.GetApResponseFromToken(repToken, GssToken);
@@ -812,7 +896,6 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
             #endregion
 
             smb2Client.LogOff();
-            smb2Client.Disconnect();
         }
 
         private EncTicketPart RetrieveAndDecryptServiceTicket(KerberosFunctionalClient kerberosClient, out EncryptionKey serviceKey)
@@ -958,6 +1041,50 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.Auth.TestSuite
             originalAuthData.Elements.CopyTo(elements, 0);
             elements[elementNum] = newElement;
             originalAuthData.Elements = elements;
+        }
+
+        private byte[] AddMICTokenToGssApiToken(byte[] token, long sequenceNumber, EncryptionKey key, Func<KerberosMICToken, KerberosMICToken> mechListMICModifier)
+        {
+            // Obtain checksum type against encryption type
+            var aesEncryptionTypesAndChecksumTypes = new Dictionary<EncryptionType, ChecksumType>
+            {
+                [EncryptionType.AES128_CTS_HMAC_SHA1_96] = ChecksumType.hmac_sha1_96_aes128,
+                [EncryptionType.AES256_CTS_HMAC_SHA1_96] = ChecksumType.hmac_sha1_96_aes256
+            };
+
+            var encryptionType = (EncryptionType)key.keytype.Value.Value;
+            if (!aesEncryptionTypesAndChecksumTypes.ContainsKey(encryptionType))
+            {
+                BaseTestSite.Assume.Inconclusive("The signature in the SPNEGO mechListMIC field is processed by the recipient only when AES Kerberos ciphers are negotiated by Kerberos.");
+            }
+            var checksumType = aesEncryptionTypesAndChecksumTypes[encryptionType];
+
+            var keyForMICToken = key.keyvalue.ByteArrayValue;
+
+            // Add mechListMIC by repacking InitialNegToken 
+            var initialNegToken = new InitialNegToken();
+            initialNegToken.BerDecode(new Asn1DecodingBuffer(token));
+            var negTokenInit = initialNegToken.negToken.GetData() as NegTokenInit;
+
+            var mechTypeListBuffer = new Asn1BerEncodingBuffer();
+            negTokenInit.mechTypes.BerEncode(mechTypeListBuffer);
+
+            var checksumData = mechTypeListBuffer.Data;
+
+            var mechListMIC = KerberosMICToken.GSS_GetMIC(KerberosMICToken_Flags_Values.None, sequenceNumber, checksumType, keyForMICToken, checksumData);
+
+            if (mechListMICModifier != null)
+            {
+                mechListMIC = mechListMICModifier(mechListMIC);
+            }
+
+            negTokenInit.mechListMIC = new Asn1OctetString(mechListMIC.Encode());
+            var initialNegTokenBuf = new Asn1BerEncodingBuffer();
+            initialNegToken.BerEncode(initialNegTokenBuf);
+
+            token = initialNegTokenBuf.Data;
+
+            return token;
         }
     }
 }

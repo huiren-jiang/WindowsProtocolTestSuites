@@ -216,7 +216,7 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.ServerFailover.TestSuite
                 }
             }
         }
-        #endregion
+        #endregion       
 
         #region Test Utility
 
@@ -322,9 +322,10 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.ServerFailover.TestSuite
             string testDirectory = CreateTestDirectory(uncSharePath);
             string file = Path.Combine(testDirectory, Guid.NewGuid().ToString());
             Guid clientGuid = Guid.NewGuid();
-            Guid createGuid = Guid.NewGuid();           
+            Guid createGuid = Guid.NewGuid();
 
-            DoUntilSucceed(() => WriteContentBeforeFailover(fsType, server, currentAccessIpAddr, uncSharePath, file, content, clientGuid, createGuid),
+            FILEID fileId = FILEID.Zero;
+            DoUntilSucceed(() => WriteContentBeforeFailover(fsType, server, currentAccessIpAddr, uncSharePath, file, content, clientGuid, createGuid, out fileId),
                     TestConfig.FailoverTimeout,
                     "Before failover, retry Write content until succeed within timeout span.");
             #endregion
@@ -354,9 +355,11 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.ServerFailover.TestSuite
                 if (fsType == FileServerType.GeneralFileServer)
                 {
                     currentAccessIpAddr = null;
-                    IPAddress[] accessIpList = Dns.GetHostEntry(server).AddressList;
+
                     DoUntilSucceed(() =>
                     {
+                        this.sutController.FlushDNS();
+                        IPAddress[] accessIpList = Dns.GetHostEntry(server).AddressList;
                         foreach (IPAddress ipAddress in accessIpList)
                         {
                             Smb2FunctionalClient pingClient = new Smb2FunctionalClient(TestConfig.FailoverTimeout, TestConfig, BaseTestSite);
@@ -380,34 +383,38 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.ServerFailover.TestSuite
                 else
                 {
                     currentAccessIpAddr = null;
-
-                    IPAddress[] accessIpList = Dns.GetHostEntry(server).AddressList;
-                    foreach (IPAddress ipAddress in accessIpList)
+                    DoUntilSucceed(() =>
                     {
-                        if (TestConfig.IsWindowsPlatform)
+                        this.sutController.FlushDNS();
+                        IPAddress[] accessIpList = Dns.GetHostEntry(server).AddressList;
+                        foreach (IPAddress ipAddress in accessIpList)
                         {
-                            // When setting failover mode to StopNodeService for Windows, SMB2 servers on two nodes can still be accessed by the client.
-                            // So the client needs to get the new node to access it after failover by comparing host name.
-                            if (string.Compare(currentAccessNode, Dns.GetHostEntry(ipAddress).HostName, true) == 0)
+                            if (TestConfig.IsWindowsPlatform)
                             {
-                                continue;
+                                // When setting failover mode to StopNodeService for Windows, SMB2 servers on two nodes can still be accessed by the client.
+                                // So the client needs to get the new node to access it after failover by comparing host name.
+                                if (!reconnectWithoutFailover && string.Compare(currentAccessNode, Dns.GetHostEntry(ipAddress).HostName, true) == 0)
+                                {
+                                    continue;
+                                }
+                            }
+                            Smb2FunctionalClient pingClient = new Smb2FunctionalClient(TestConfig.FailoverTimeout, TestConfig, BaseTestSite);
+
+                            try
+                            {
+                                pingClient.ConnectToServerOverTCP(ipAddress);
+                                pingClient.Disconnect();
+                                pingClient = null;
+
+                                currentAccessIpAddr = ipAddress;
+                                return true;
+                            }
+                            catch
+                            {
                             }
                         }
-                        Smb2FunctionalClient pingClient = new Smb2FunctionalClient(TestConfig.FailoverTimeout, TestConfig, BaseTestSite);
-
-                        try
-                        {
-                            pingClient.ConnectToServerOverTCP(ipAddress);
-                            pingClient.Disconnect();
-                            pingClient = null;
-
-                            currentAccessIpAddr = ipAddress;
-                            break;
-                        }
-                        catch
-                        {
-                        }
-                    }
+                        return false;
+                    }, TestConfig.FailoverTimeout, "Retry to ping to server until succeed within timeout span");
                 }
             }
             else if (witnessType == WitnessType.SwnWitness)
@@ -460,7 +467,12 @@ namespace Microsoft.Protocols.TestSuites.FileSharing.ServerFailover.TestSuite
             #endregion
 
             #region Read content and close the file
-            DoUntilSucceed(() => ReadContentAfterFailover(server, currentAccessIpAddr, uncSharePath, file, content, clientGuid, createGuid),
+            BaseTestSite.Assert.AreNotEqual(
+                null,
+                currentAccessIpAddr,
+                "Access IP to the file server should not be empty when reconnecting.");
+
+            DoUntilSucceed(() => ReadContentAfterFailover(server, currentAccessIpAddr, uncSharePath, file, content, clientGuid, createGuid, fileId),
                     TestConfig.FailoverTimeout,
                     "After failover, retry Read content until succeed within timeout span.");
             #endregion

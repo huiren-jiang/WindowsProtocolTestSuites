@@ -42,6 +42,23 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         FSCTL_DELETE_REPARSE_POINT = 0x900ac,
 
         /// <summary>
+        /// The FSCTL_DUPLICATE_EXTENTS_TO_FILE request message requests that the server copy the specified portion of one file 
+        /// (that is the source file) into a specified portion of another file (target file) on the same volume. 
+        /// </summary>
+        FSCTL_DUPLICATE_EXTENTS_TO_FILE = 0x98344,
+
+        /// <summary>
+        /// The FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX request message requests that the server copy the specified 
+        /// portion of the source file into a specified portion of the target file on the same volume. 
+        /// </summary>
+        FSCTL_DUPLICATE_EXTENTS_TO_FILE_EX = 0x983E8,
+
+        /// <summary>
+        /// The FSCTL_FILE_LEVEL_TRIM operation informs the underlying storage medium that the contents of the given range of the file no longer needs to be maintained. 
+        /// </summary>
+        FSCTL_FILE_LEVEL_TRIM = 0x98208,
+
+        /// <summary>
         /// This message requests that the server return the statistical information of the file system such as Type,  
         ///  Version, and so on, as specified in FSCTL_FILESYSTEM_GET_STATISTICS reply, for the file or directory   
         /// associated with the handle on which this FSCTL was invoked. 
@@ -71,6 +88,12 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         /// the file or directory that is associated with the handle on which this FSCTL was invoked. 
         /// </summary>
         FSCTL_GET_NTFS_VOLUME_DATA = 0x90064,
+
+        /// <summary>
+        /// This message requests that the server return information about the ReFS file system volume that contains
+        /// the file or directory that is associated with the handle on which this FSCTL was invoked.
+        /// </summary>
+        FSCTL_GET_REFS_VOLUME_DATA = 0X902D8,
 
         /// <summary>
         /// This message requests that the server return the object identifier for the file or directory associated  
@@ -263,12 +286,129 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         ///   file or directory was closed. This FSCTL can be called independently of the actual file close operation 
         /// to  write a USN record and cause a post of any pending USN updates for the indicated file. 
         /// </summary>
-        FSCTL_WRITE_USN_CLOSE_RECORD = 0x900ef
+        FSCTL_WRITE_USN_CLOSE_RECORD = 0x900ef,
+
+        /// <summary>
+        /// The FSCTL_QUERY_FILE_REGIONS request message requests that the server return a list of file regions, based 
+        /// on a specified usage parameter, for the file associated with the handle on which this FSCTL was invoked. 
+        /// </summary>
+        FSCTL_QUERY_FILE_REGIONS = 0x90284,
     }
 
     #endregion
 
     #region FSCTL Structures
+
+    /// <summary>
+    /// There is a DesiredUsage field in both FILE_REGION_INPUT data element and FILE_REGION_INFO data element.
+    /// The following table provides the currently defined usage parameters. 
+    /// </summary>
+    public enum FILE_REGION_USAGE : uint
+    {
+        None = 0,
+
+        /// <summary>
+        /// Information about the valid data length for the specified file and file range in the cache will be returned.
+        /// </summary>
+        FILE_REGION_USAGE_VALID_CACHED_DATA = 0x00000001,
+
+        /// <summary>
+        /// Information about the valid data length for the specified file and file range on disk will be returned.
+        /// </summary>
+        FILE_REGION_USAGE_VALID_NONCACHED_DATA = 0x00000002,
+    }
+    /// <summary>
+    /// The FSCTL_QUERY_FILE_REGIONS request message requests that the server return a list of file regions, 
+    /// based on a specified usage parameter, for the file associated with the handle on which this FSCTL was invoked. 
+    /// This message contains an optional FILE_REGION_INPUT data element. 
+    /// A FILE_REGION_INPUT data element is as follows. 
+    /// </summary>
+    public partial struct FILE_REGION_INPUT
+    {
+        /// <summary>
+        /// A 64-bit signed integer that contains the file offset, in bytes, of the start of a range of bytes in a file.
+        /// </summary>
+        public long FileOffset;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the size, in bytes, of the range.
+        /// </summary>
+        public long Length;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that indicates usage parameters for this operation. 
+        /// </summary>
+        public FILE_REGION_USAGE DesiredUsage;
+
+        /// <summary>
+        /// Reserved.
+        /// </summary>
+        public uint Reserved;
+    }
+
+    /// <summary>
+    /// The FSCTL_QUERY_FILE_REGIONS reply message returns the results of the FSCTL_QUERY_FILE_REGION Request as a 
+    /// variably sized data element, FILE_REGION_OUTPUT, which contains one or more FILE_REGION_INFO elements that contain 
+    /// the ranges computed as a result of the desired usage.
+    /// </summary>
+    public partial struct FILE_REGION_OUTPUT
+    {
+        /// <summary>
+        /// A 32-bit unsigned integer that indicates the flags for this operation. No flags are currently defined, 
+        /// thus this field SHOULD be set to 0x00000000 and MUST be ignored.
+        /// </summary>
+        public uint Flags;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that indicates the total number of regions that could be returned.
+        /// </summary>
+        public uint TotalRegionEntryCount;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that indicates the number of regions that were actually returned and which are contained in this structure.
+        /// </summary>
+        public uint RegionEntryCount;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that is reserved. This field SHOULD be set to 0x00000000 and MUST be ignored.
+        /// </summary>
+        public uint Reserved;
+
+        /// <summary>
+        /// One or more FILE_REGION_INFO structures, as specified in section 2.3.42.1, that contain information on the desired ranges based on the desired usage indicated by the DesiredUsage field.
+        /// </summary>
+        [Size("RegionEntryCount")]
+        public FILE_REGION_INFO[] Region;
+    }
+
+    /// <summary>
+    /// The FILE_REGION_INFO structure contains a computed region of a file based on a desired usage. 
+    /// This structure is used to store region information for the FSCTL_QUERY_FILE_REGIONS reply message, 
+    /// with the FILE_REGION_OUTPUT structure containing one or more FILE_REGION_INFO structures.
+    /// A FILE_REGION_INFO data element is as follows.
+    /// </summary>
+    public partial struct FILE_REGION_INFO
+    {
+        /// <summary>
+        /// A 64-bit signed integer that contains the file offset, in bytes, of the region.
+        /// </summary>
+        public long FileOffset;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the size, in bytes, of the region.
+        /// </summary>
+        public long Length;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that indicates the usage for the given region of the file. 
+        /// </summary>
+        public FILE_REGION_USAGE DesiredUsage;
+
+        /// <summary>
+        /// A 32-bit unsigned integer field that is reserved. This field SHOULD be set to 0x00000000 and MUST be ignored.
+        /// </summary>
+        public uint Reserved;
+    }
 
     /// <summary>
     /// This message requests that the server set the short  name behavior for the volume associated with the file   
@@ -2133,6 +2273,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         V2 = 0x00000001,
     }
 
+    #region FSCTL_READ_FILE_USN_DATA
     /// <summary>
     /// The FSCTL_READ_FILE_USN_DATA reply message returns the  results of the FSCTL_READ_FILE_USN_DATA request as  a  
     /// USN_RECORD.  The USN_RECORD element is as follows. 
@@ -2256,6 +2397,292 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         [Size("FileNameLength")]
         public byte[] FileName;
     }
+
+    /// <summary>
+    /// FSCTL_READ_FILE_USN_DATA requests that the server return the most recent change journal USN for the file or directory 
+    /// associated with the handle on which this FSCTL was invoked. This message contains an optional READ_FILE_USN_DATA data element.
+    /// The READ_FILE_USN_DATA data element is as follows.
+    /// </summary>
+    public partial struct READ_FILE_USN_DATA
+    {
+        /// <summary>
+        /// A 16-bit unsigned integer that contains the minimum major version of records returned in the results of this request.
+        /// </summary>
+        public ushort MinMajorVersion;
+
+        /// <summary>
+        /// A 16-bit unsigned integer that contains the maximum major version of records returned in the results of this request.
+        /// </summary>
+        public ushort MaxMajorVersion;
+    }
+
+    /// <summary>
+    ///  The FSCTL_READ_FILE_USN_DATA reply message returns the results of the FSCTL_READ_FILE_USN_DATA request as 
+    ///  a USN_RECORD_V2 or a USN_RECORD_V3. Both forms of reply message begin with a USN_RECORD_COMMON_HEADER, 
+    ///  which can be used to determine the form of the full reply message.
+    ///  The USN_RECORD_COMMON_HEADER element is as follows.
+    /// </summary>
+    public partial struct USN_RECORD_COMMON_HEADER
+    {
+        /// <summary>
+        ///  A 32-bit unsigned integer that contains the total length of the update sequence number (USN) record, in bytes.
+        /// </summary>
+        [StaticSize(4)]
+        public uint RecordLength;
+
+        /// <summary>
+        ///  A 16-bit unsigned integer that contains the major version of the change journal software for this record. For
+        ///  example, if the change journal software is version 2.0, the major version number is 2.
+        /// </summary>
+        [StaticSize(2)]
+        public ushort MajorVersion;
+
+        /// <summary>
+        ///  A 16-bit unsigned integer that contains the minor version of the change journal software for this record. For
+        ///  example, if the change journal software is version 2.0, the minor version number is 0 (zero).
+        /// </summary>
+        [StaticSize(2)]
+        public ushort MinorVersion;
+    }
+
+    /// <summary>
+    ///  The FSCTL_READ_FILE_USN_DATA reply message returns the results of the FSCTL_READ_FILE_USN_DATA request as 
+    ///  a USN_RECORD_V2 or a USN_RECORD_V3. 
+    ///  The USN_RECORD_V2 element is as follows.
+    /// </summary>
+    public partial struct USN_RECORD_V2
+    {
+        /// <summary>
+        ///  A 32-bit unsigned integer that contains the total length of the update sequence number (USN) record, in bytes.
+        /// </summary>
+        [StaticSize(4)]
+        public uint RecordLength;
+
+        /// <summary>
+        ///  A 16-bit unsigned integer that contains the major version of the change journal software for this record. For
+        ///  example, if the change journal software is version 2.0, the major version number is 2.
+        /// </summary>
+        [StaticSize(2)]
+        public ushort MajorVersion;
+
+        /// <summary>
+        ///  A 16-bit unsigned integer that contains the minor version of the change journal software for this record. For
+        ///  example, if the change journal software is version 2.0, the minor version number is 0 (zero).
+        /// </summary>
+        [StaticSize(2)]
+        public ushort MinorVersion;
+
+        /// <summary>
+        ///  A 64-bit unsigned integer, opaque to the client, containing the number (assigned by the file system when the file
+        ///  is created) of the file or directory for which this record notes changes. The FileReferenceNumber is an arbitrarily 
+        ///  assigned value (unique within the volume on which the file is stored) that associates a journal record with a file. 
+        ///  If the value is -1, its meaning is undefined; otherwise this value SHOULD always be unique within the volume on 
+        ///  which the file is stored over the life of the volume.
+        /// </summary>
+        [StaticSize(8)]
+        public ulong FileReferenceNumber;
+
+        /// <summary>
+        ///  A 64-bit signed integer, opaque to the client, containing the ordinal number of the directory on which the file or 
+        ///  directory that is associated with this record is located. This is an arbitrarily assigned value that associates a 
+        ///  journal record with a parent directory. If the value is -1, its meaning is undefined; otherwise this value SHOULD 
+        ///  always be unique within the volume on which the file is stored over the life of the volume.
+        /// </summary>
+        [StaticSize(8)]
+        public ulong ParentFileReferenceNumber;
+
+        /// <summary>
+        ///  A 64-bit signed integer, opaque to the client, containing the USN of the record. This value is unique within the 
+        ///  volume on which the file is stored. This value MUST be greater than or equal to 0. This value MUST be 0 if no 
+        ///  USN change journal records have been logged for the file or directory associated with this record. 
+        ///  For more information, see [MSDN-CJ].
+        /// </summary>
+        [StaticSize(8)]
+        public long Usn;
+
+        /// <summary>
+        ///  A structure containing the absolute system time in UTC expressed as the number of 100-nanosecond intervals
+        ///  since January 1, 1601 (UTC), in the format of a FILETIME structure.
+        /// </summary>
+        [StaticSize(8)]
+        public _FILETIME TimeStamp;
+
+        /// <summary>
+        ///  A 32-bit unsigned integer that contains flags that indicate reasons for changes that have accumulated in this file 
+        ///  or directory journal record since the file or directory was opened. When a file or directory is closed, a final 
+        ///  USN record is generated with the USN_REASON_CLOSE flag set in this field. The next change, occurring after the 
+        ///  next open operation or deletion, starts a new record with a new set of reason flags. A rename or move operation 
+        ///  generates two USN records: one that records the old parent directory for the item and one that records the new
+        ///  parent in the ParentFileReferenceNumber member. Possible values for the reason code are as follows (all unused 
+        ///  bits are reserved for future use and MUST NOT be used).
+        /// </summary>
+        [StaticSize(4)]
+        public Reason_Values Reason;
+
+        /// <summary>
+        ///  A 32-bit unsigned integer that provides additional information about the source of the change. When a thread 
+        ///  writes a new USN record, the source information flags in the prior record continue to be present only if the 
+        ///  thread also sets those flags. Therefore, the source information structure allows applications to filter out 
+        ///  USN records that are set only by a known source, for example, an antivirus filter. 
+        /// </summary>
+        [StaticSize(4)]
+        public SourceInfo_Values SourceInfo;
+
+        /// <summary>
+        ///  A 32-bit unsigned integer that contains an index of a unique security identifier assigned to the file or 
+        ///  directory associated with this record. This index is internal to the underlying object store and MUST be ignored.
+        /// </summary>
+        [StaticSize(4)]
+        public uint SecurityId;
+
+        /// <summary>
+        ///  A 32-bit unsigned integer that contains attributes for the file or directory associated with this record. 
+        ///  Attributes of streams associated with the file or directory are excluded. Valid file attributes are specified 
+        ///  in section 2.6.
+        /// </summary>
+        [StaticSize(4)]
+        public uint FileAttributes;
+
+        /// <summary>
+        ///  A 16-bit unsigned integer that contains the length of the file or directory name associated with this record, 
+        ///  in bytes. The FileName member contains this name. Use this member to determine file name length rather than 
+        ///  depending on a trailing null to delimit the file name in FileName.
+        /// </summary>
+        [StaticSize(2)]
+        public ushort FileNameLength;
+
+        /// <summary>
+        ///  A 16-bit unsigned integer that contains the offset, in bytes, of the FileName member from the beginning of the structure.
+        /// </summary>
+        [StaticSize(2)]
+        public ushort FileNameOffset;
+
+        /// <summary>
+        ///  A variable-length field of Unicode characters containing the name of the file or directory associated with this record 
+        ///  in Unicode format. When working with this field, do not assume that the file name will contain a trailing Unicode null character.
+        /// </summary>
+        [Size("(FileNameOffset == 0) ? FileNameLength : (FileNameOffset - 60 + FileNameLength)")] //60 is the length is fields before this one
+        public byte[] FileName;
+    }
+
+    /// <summary>
+    ///  The FSCTL_READ_FILE_USN_DATA reply message returns the results of the FSCTL_READ_FILE_USN_DATA request as 
+    ///  a USN_RECORD_V2 or a USN_RECORD_V3. 
+    ///  The USN_RECORD_V3 element is as follows.
+    /// </summary>
+    public partial struct USN_RECORD_V3
+    {
+        /// <summary>
+        ///  A 32-bit unsigned integer that contains the total length of the update sequence number (USN) record, in bytes.
+        /// </summary>
+        [StaticSize(4)]
+        public uint RecordLength;
+
+        /// <summary>
+        ///  A 16-bit unsigned integer that contains the major version of the change journal software for this record. For
+        ///  example, if the change journal software is version 2.0, the major version number is 2.
+        /// </summary>
+        [StaticSize(2)]
+        public ushort MajorVersion;
+
+        /// <summary>
+        ///  A 16-bit unsigned integer that contains the minor version of the change journal software for this record. For
+        ///  example, if the change journal software is version 2.0, the minor version number is 0 (zero).
+        /// </summary>
+        [StaticSize(2)]
+        public ushort MinorVersion;
+
+        /// <summary>
+        ///  A 128-bit signed integer, opaque to the client, containing the number (assigned by the file system when the file is created) 
+        ///  of the file or directory for which this record notes changes. The FileReferenceNumber is an arbitrarily assigned value 
+        ///  (unique within the volume on which the file is stored) that associates a journal record with a file. This value SHOULD always 
+        ///  be unique within the volume on which the file is stored over the life of the volume. 
+        /// </summary>
+        [StaticSize(16)]
+        public Guid FileReferenceNumber;
+
+        /// <summary>
+        ///  A 128-bit signed integer, opaque to the client, containing the ordinal number of the directory on which the file or directory 
+        ///  that is associated with this record is located. This is an arbitrarily assigned value (unique within the volume on which the 
+        ///  file is stored) that associates a journal record with a parent directory.
+        /// </summary>
+        [StaticSize(16)]
+        public Guid ParentFileReferenceNumber;
+
+        /// <summary>
+        ///  A 64-bit signed integer, opaque to the client, containing the USN of the record. This value is unique within the 
+        ///  volume on which the file is stored. This value MUST be greater than or equal to 0. This value MUST be 0 if no 
+        ///  USN change journal records have been logged for the file or directory associated with this record. 
+        ///  For more information, see [MSDN-CJ].
+        /// </summary>
+        [StaticSize(8)]
+        public long Usn;
+
+        /// <summary>
+        ///  A structure containing the absolute system time in UTC expressed as the number of 100-nanosecond intervals
+        ///  since January 1, 1601 (UTC), in the format of a FILETIME structure.
+        /// </summary>
+        [StaticSize(8)]
+        public _FILETIME TimeStamp;
+
+        /// <summary>
+        ///  A 32-bit unsigned integer that contains flags that indicate reasons for changes that have accumulated in this file 
+        ///  or directory journal record since the file or directory was opened. When a file or directory is closed, a final 
+        ///  USN record is generated with the USN_REASON_CLOSE flag set in this field. The next change, occurring after the 
+        ///  next open operation or deletion, starts a new record with a new set of reason flags. A rename or move operation 
+        ///  generates two USN records: one that records the old parent directory for the item and one that records the new
+        ///  parent in the ParentFileReferenceNumber member. Possible values for the reason code are as follows (all unused 
+        ///  bits are reserved for future use and MUST NOT be used).
+        /// </summary>
+        [StaticSize(4)]
+        public Reason_Values Reason;
+
+        /// <summary>
+        ///  A 32-bit unsigned integer that provides additional information about the source of the change. When a thread 
+        ///  writes a new USN record, the source information flags in the prior record continue to be present only if the 
+        ///  thread also sets those flags. Therefore, the source information structure allows applications to filter out 
+        ///  USN records that are set only by a known source, for example, an antivirus filter. 
+        /// </summary>
+        [StaticSize(4)]
+        public SourceInfo_Values SourceInfo;
+
+        /// <summary>
+        ///  A 32-bit unsigned integer that contains an index of a unique security identifier assigned to the file or 
+        ///  directory associated with this record. This index is internal to the underlying object store and MUST be ignored.
+        /// </summary>
+        [StaticSize(4)]
+        public uint SecurityId;
+
+        /// <summary>
+        ///  A 32-bit unsigned integer that contains attributes for the file or directory associated with this record. 
+        ///  Attributes of streams associated with the file or directory are excluded. Valid file attributes are specified 
+        ///  in section 2.6.
+        /// </summary>
+        [StaticSize(4)]
+        public uint FileAttributes;
+
+        /// <summary>
+        ///  A 16-bit unsigned integer that contains the length of the file or directory name associated with this record, 
+        ///  in bytes. The FileName member contains this name. Use this member to determine file name length rather than 
+        ///  depending on a trailing null to delimit the file name in FileName.
+        /// </summary>
+        [StaticSize(2)]
+        public ushort FileNameLength;
+
+        /// <summary>
+        ///  A 16-bit unsigned integer that contains the offset, in bytes, of the FileName member from the beginning of the structure.
+        /// </summary>
+        [StaticSize(2)]
+        public ushort FileNameOffset;
+
+        /// <summary>
+        ///  A variable-length field of Unicode characters containing the name of the file or directory associated with this record 
+        ///  in Unicode format. When working with this field, do not assume that the file name will contain a trailing Unicode null character.
+        /// </summary>
+        [Size("(FileNameOffset == 0) ? FileNameLength : (FileNameOffset - 76 + FileNameLength)")] //76 is the length is fields before this one
+        public byte[] FileName;
+    }
+    #endregion
 
     /// <summary>
     /// A 32-bit unsigned integer that contains flags that indicate  reasons for changes that have accumulated in this 
@@ -2637,6 +3064,173 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         /// A 64-bit signed integer that contains the ending logical  cluster number of the master file table zone. 
         /// </summary>
         public _LARGE_INTEGER MftZoneEnd;
+    }
+
+    /// <summary>
+    /// The FSCTL_GET_NTFS_VOLUME_DATA reply message returns  the results of the FSCTL_GET_NTFS_VOLUME_DATA request   
+    /// as an NTFS_VOLUME_DATA_BUFFER_REPLY element. The NTFS_VOLUME_DATA_BUFFER_REPLY  contains information on a  
+    /// volume. For more information  about the NTFS file system, see [MSFT-NTFS]. 
+    /// </summary>
+    //  <remarks>
+    //   MS-fscc\a5bae3a3-9025-4f07-b70d-e2247b01faa6.xml
+    //  </remarks>
+    public partial struct NTFS_VOLUME_DATA_BUFFER
+    {
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the serial number  of the volume. This is a unique number assigned  
+        /// to  the volume media by the operating system when the volume  is formatted. 
+        /// </summary>
+        public long VolumeSerialNumber;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the number of  sectors in the specified volume. 
+        /// </summary>
+        public long NumberSectors;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the total number  of clusters in the specified volume. 
+        /// </summary>
+        public long TotalClusters;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the number of  free clusters in the specified volume. 
+        /// </summary>
+        public long FreeClusters;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the number of  reserved clusters in the specified volume. Reserved   
+        /// clusters are free clusters reserved for when the volume  becomes full. Reserved clusters are released when 
+        ///  either  the master file table grows beyond its allocated space  (the volume has a large number of small  
+        /// files) or the  volume becomes full (the volume has a small number  of large files). 
+        /// </summary>
+        public long TotalReserved;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that contains the number of  bytes in a sector on the specified volume. 
+        /// </summary>
+        public uint BytesPerSector;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that contains the number of  bytes in a cluster on the specified volume. This  
+        /// value  is also known as the cluster factor. 
+        /// </summary>
+        public uint BytesPerCluster;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that contains the number of  bytes in a file record segment. 
+        /// </summary>
+        public uint BytesPerFileRecordSegment;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that contains the number of  clusters in a file record segment. 
+        /// </summary>
+        public uint ClustersPerFileRecordSegment;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the size of the  master file table in bytes. 
+        /// </summary>
+        public ulong MftValidDataLength;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the starting logical  cluster number of the master file table. 
+        /// </summary>
+        public ulong MftStartLcn;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the starting logical  cluster number of the master file table  
+        /// mirror. 
+        /// </summary>
+        public ulong Mft2StartLcn;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the starting logical  cluster number of the master file table zone. 
+        /// </summary>
+        public ulong MftZoneStart;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the ending logical  cluster number of the master file table zone. 
+        /// </summary>
+        public ulong MftZoneEnd;
+    }
+
+    /// <summary>
+    /// The FSCTL_GET_REFS_VOLUME_DATA reply message returns the results of the FSCTL_GET_REFS_VOLUME_DATA request as an REFS_VOLUME_DATA_BUFFER element.
+    /// The REFS_VOLUME_DATA_BUFFER contains information on a volume.
+    /// </summary>
+    public partial struct REFS_VOLUME_DATA_BUFFER
+    {
+
+        /// <summary>
+        /// A 32-bit unsigned integer that contains the valid data length for this structure. 
+        /// ByteCount can be less than the size of this structure. Only the fields that entirely fit within the valid data 
+        /// length for this structure, as defined by ByteCount, are valid.
+        /// </summary>
+        public uint ByteCount;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that contains the major version of the ReFS volume.
+        /// </summary>
+        public uint MajorVersion;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that contains the minor version of the ReFS volume.
+        /// </summary>
+        public uint MinorVersion;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that defines the number of bytes in a physical sector on the specified volume.
+        /// </summary>
+        public uint BytesPerPhysicalSector;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the serial number of the volume. This is a unique number assigned to 
+        /// the volume media by the operating system when the volume is formatted.
+        /// </summary>
+        public long VolumeSerialNumber;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the number of sectors in the specified volume.
+        /// </summary>
+        public long NumberSectors;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the total number of clusters in the specified volume.
+        /// </summary>
+        public long TotalClusters;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the number of free clusters in the specified volume.
+        /// </summary>
+        public long FreeClusters;
+
+        /// <summary>
+        /// A 64-bit signed integer that contains the number of reserved clusters in the specified volume. Reserved clusters 
+        /// are used to guarantee clusters are available at points when the file system can't properly report allocation failures.
+        /// </summary>
+        public long TotalReserved;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that contains the number of bytes in a sector on the specified volume.
+        /// </summary>
+        public uint BytesPerSector;
+
+        /// <summary>
+        /// A 32-bit unsigned integer that contains the number of bytes in a cluster on the specified volume. This value is also known as the cluster factor.
+        /// </summary>
+        public uint BytesPerCluster;
+
+        /// <summary>
+        /// A 64-bit unsigned integer that defines the maximum number of bytes a file can contain and be co-located with 
+        /// the file system metadata that describes the file (commonly known as resident files).
+        /// </summary>
+        public long MaximumSizeOfResidentFile;
+
+        /// <summary>
+        /// 80 bytes which, if included, as per the ByteCount field, are reserved, have an undefined value, and are not interpreted.
+        /// </summary>
+        [StaticSize(80)]
+        public byte[] Reserved;
     }
 
     #region FSCTL_GET_INTEGRITY_INFORMATION_BUFFER
@@ -4402,76 +4996,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
     //  </remarks>
     public partial struct FileBothDirectoryInformation
     {
-
         /// <summary>
-        /// A 32-bit unsigned integer that contains the byte offset  from the beginning of this entry, at which the  
-        /// next  FILE_BOTH_DIR_INFORMATION entry is located, if multiple  entries are present in a buffer. This  
-        /// member is zero  if no other entries follow this one. An implementation  MUST use this value to determine  
-        /// the location of the  next entry (if multiple entries are present in a buffer),  and MUST NOT assume that  
-        /// the value of NextEntryOffset  is the same as the size of the current entry. 
+        /// The common structure shared by FileDirectoryInformation, FileBothDirectoryInformation, FileFullDirectoryInformation, 
+        /// FileIdBothDirectoryInformation, FileIdFullDirectoryInformation, FileIdGlobalTxDirectoryInformation
         /// </summary>
-        public uint NextEntryOffset;
+        public FileCommonDirectoryInformation FileCommonDirectoryInformation;
 
         /// <summary>
-        /// A 32-bit unsigned integer that contains the byte offset  of the file within the parent directory. For file 
-        ///  systems  in which the position of a file within the parent directory  is not fixed and can be changed at  
-        /// any time to maintain  sort order, this field SHOULD be set to 0, and MUST  be ignored. When using NTFS,  
-        /// the position of a file  within the parent directory is not fixed and can be  changed at any time.  
-        /// windows_2000, windows_xp, windows_server_2003,  windows_vista, and windows_server_2008 set this value  to  
-        /// 0 for files on NTFS file systems. 
-        /// </summary>
-        public uint FileIndex;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the time when  the file was created. All dates and times are in  
-        /// absolute  system-time format, which is represented as a FILETIME  structure. This value MUST be greater  
-        /// than or equal  to 0. 
-        /// </summary>
-        public FILETIME CreationTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  the file was accessed in the format of a FILETIME  
-        /// structure.  This value MUST be greater than or equal to 0. 
-        /// </summary>
-        public FILETIME LastAccessTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  information was written to the file in the format of  
-        ///  a FILETIME structure. This value MUST be greater than  or equal to 0. 
-        /// </summary>
-        public FILETIME LastWriteTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  the file was changed in the format of a FILETIME  
-        /// structure.  This value MUST be greater than or equal to 0. 
-        /// </summary>
-        public FILETIME ChangeTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the absolute new  end-of-file position as a byte offset from the  
-        /// start  of the file. EndOfFile specifies the offset to the  byte immediately following the last valid byte  
-        /// in the  file. Because this value is zero-based, it actually  refers to the first free byte in the file.  
-        /// That is,  it is the offset from the beginning of the file at  which new bytes appended to the file will be 
-        ///  written.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        public long EndOfFile;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the file allocation  size, in bytes. Usually, this value is a  
-        /// multiple of  the sector or cluster size of the underlying physical  device. The value of this field MUST  
-        /// be greater than  or equal to 0. 
-        /// </summary>
-        public long AllocationSize;
-
-        /// <summary>
-        /// A 32-bit unsigned integer that contains the file attributes.  Valid file attributes are specified in  
-        /// section . 
-        /// </summary>
-        public uint FileAttributes;
-
-        /// <summary>
-        /// A 32-bit unsigned integer that contains the length,  in bytes, of the FileName field. The NULL termination 
-        ///   of the string, if present, is not included in the FileNameLength  count. 
+        /// A 32-bit unsigned integer that contains the length,  in bytes, of the FileName field. 
         /// </summary>
         public uint FileNameLength;
 
@@ -4497,8 +5029,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         /// A 24-byte Unicode char field containing the short (8.3)  file name. The file name might be  
         /// NULL-terminated. 
         /// </summary>
-        [StaticSize(12, StaticSizeMode.Elements)]
-        public ushort[] ShortName;
+        [StaticSize(24, StaticSizeMode.Elements)]
+        public byte[] ShortName;
 
         /// <summary>
         /// A sequence of Unicode characters containing the file  name. This field might not be NULL-terminated, and   
@@ -4617,15 +5149,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
     #region 2.4.10   FileDirectoryInformation
 
     /// <summary>
-    /// This information class is used to query detailed information  for the files in a directory.  The  
-    /// FILE_DIRECTORY_INFORMATION  data element is as follows. 
+    /// The common part of the structure FileDirectoryInformation, FileBothDirectoryInformation, FileFullDirectoryInformation, 
+    /// FileIdBothDirectoryInformation, FileIdFullDirectoryInformation, FileIdGlobalTxDirectoryInformation
     /// </summary>
-    //  <remarks>
-    //   MS-fscc\b38bf518-9057-4c88-9ddd-5e2d3976a64b.xml
-    //  </remarks>
-    public partial struct FileDirectoryInformation
+    public struct FileCommonDirectoryInformation
     {
-
         /// <summary>
         /// A 32-bit unsigned integer that contains the byte offset  from the beginning of this entry, at which the  
         /// next  FILE_DIRECTORY_INFORMATION entry is located, if multiple  entries are present in a buffer. This  
@@ -4648,27 +5176,27 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         /// <summary>
         /// A 64-bit signed integer that contains the time when  the file was created. All dates and times are in  
         /// absolute  system-time format, which is represented as a FILETIME  structure. This value MUST be greater  
-        /// than or equal  to 0. 
+        /// than or equal to 0. 
         /// </summary>
-        public long CreationTime;
+        public FILETIME CreationTime;
 
         /// <summary>
         /// A 64-bit signed integer that contains the last time  the file was accessed in the format of a FILETIME  
         /// structure.  This value MUST be greater than or equal to 0. 
         /// </summary>
-        public long LastAccessTime;
+        public FILETIME LastAccessTime;
 
         /// <summary>
         /// A 64-bit signed integer that contains the last time  information was written to the file in the format of  
         ///  a FILETIME structure. This value MUST be greater than  or equal to 0. 
         /// </summary>
-        public long LastWriteTime;
+        public FILETIME LastWriteTime;
 
         /// <summary>
         /// A 64-bit signed integer that contains the last time  the file was changed in the format of a FILETIME  
         /// structure.  This value MUST be greater than or equal to 0. 
         /// </summary>
-        public long ChangeTime;
+        public FILETIME ChangeTime;
 
         /// <summary>
         /// A 64-bit signed integer that contains the absolute new  end-of-file position as a byte offset from the  
@@ -4691,6 +5219,18 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         ///  . 
         /// </summary>
         public uint FileAttributes;
+    }
+
+    /// <summary>
+    /// This information class is used to query detailed information  for the files in a directory.  The  
+    /// FILE_DIRECTORY_INFORMATION  data element is as follows. 
+    /// </summary>
+    //  <remarks>
+    //   MS-fscc\b38bf518-9057-4c88-9ddd-5e2d3976a64b.xml
+    //  </remarks>
+    public partial struct FileDirectoryInformation
+    {
+        public FileCommonDirectoryInformation FileCommonDirectoryInformation;
 
         /// <summary>
         /// A 32-bit unsigned integer that contains the length,  in bytes, of the FileName field. 
@@ -4789,77 +5329,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
     //  </remarks>
     public partial struct FileFullDirectoryInformation
     {
-
         /// <summary>
-        /// A 32-bit unsigned integer that contains the byte offset  from the beginning of this entry, at which the  
-        /// next  FILE_FULL_DIR_INFORMATION entry is located, if multiple  entries are present in a buffer. This  
-        /// member is zero  if no other entries follow this one. An implementation  MUST use this value to determine  
-        /// the location of the  next entry (if multiple entries are present in a buffer),  and MUST NOT assume that  
-        /// the value of NextEntryOffset  is the same as the size of the current entry. 
+        /// The common structure shared by FileDirectoryInformation, FileBothDirectoryInformation, FileFullDirectoryInformation, 
+        /// FileIdBothDirectoryInformation, FileIdFullDirectoryInformation, FileIdGlobalTxDirectoryInformation
         /// </summary>
-        public uint NextEntryOffset;
-
-        /// <summary>
-        /// A 32-bit unsigned integer that contains the byte offset  of the file within the parent directory. For file 
-        ///  systems  such as NTFS, in which the position of a file within  the parent directory is not fixed and can  
-        /// be changed  at any time to maintain sort order, this field SHOULD  be set to 0, and MUST be ignored. When  
-        /// using NTFS,  the position of a file within the parent directory  is not fixed and can be changed at any  
-        /// time. windows_2000,  windows_xp, windows_server_2003, windows_vista, and  windows_server_2008 set this  
-        /// value to 0 for files on  NTFS file systems. 
-        /// </summary>
-        public uint FileIndex;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the time when  the file was created in the format of a FILETIME  
-        /// structure.  This value MUST be greater than or equal to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME CreationTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  the file was accessed in the format of a FILETIME  
-        /// structure.  This value MUST be greater than or equal to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME LastAccessTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  information was written to the file in the format of  
-        ///  a FILETIME structure. This value MUST be greater than  or equal to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME LastWriteTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  the file was changed in the format of a FILETIME  
-        /// structure.  This value MUST be greater than or equal to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME ChangeTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the absolute new  end-of-file position as a byte offset from the  
-        /// start  of the file. EndOfFile specifies the offset to the  byte immediately following the last valid byte  
-        /// in the  file. Because this value is zero-based, it actually  refers to the first free byte in the file.  
-        /// That is,  it is the offset from the beginning of the file at  which new bytes appended to the file will be 
-        ///  written.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "9223372036854775807")]
-        public long EndOfFile;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the file allocation  size, in bytes. Usually, this value is a  
-        /// multiple of  the sector or cluster size of the underlying physical  device. The value of this field MUST  
-        /// be greater than  or equal to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "9223372036854775807")]
-        public long AllocationSize;
-
-        /// <summary>
-        /// A 32-bit unsigned integer that contains the file attributes.  For a list of valid file attributes, see  
-        /// section . 
-        /// </summary>
-        public uint FileAttributes;
+        public FileCommonDirectoryInformation FileCommonDirectoryInformation;
 
         /// <summary>
         /// A 32-bit unsigned integer that contains the length,  in bytes, of the FileName field. 
@@ -5006,78 +5480,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
     //  </remarks>
     public partial struct FileIdBothDirectoryInformation
     {
-
         /// <summary>
-        /// A 32-bit unsigned integer that contains the byte offset  from the beginning of this entry, at which the  
-        /// next  FILE_ID_BOTH_DIR_INFORMATION entry is located, if multiple  entries are present in the buffer. This  
-        /// member MUST  be zero if no other entries follow this one. An implementation  MUST use this value to  
-        /// determine the location of the  next entry (if multiple entries are present in a buffer),  and MUST NOT  
-        /// assume that the value of NextEntryOffset  is the same as the size of the current entry. 
+        /// The common structure shared by FileDirectoryInformation, FileBothDirectoryInformation, FileFullDirectoryInformation, 
+        /// FileIdBothDirectoryInformation, FileIdFullDirectoryInformation, FileIdGlobalTxDirectoryInformation
         /// </summary>
-        public uint NextEntryOffset;
-
-        /// <summary>
-        /// A 32-bit unsigned integer that contains the byte offset  of the file within the parent directory. For file 
-        ///  systems  in which the position of a file within the parent directory  is not fixed and can be changed at  
-        /// any time to maintain  sort order, this field SHOULD be set to 0, and MUST  be ignored. When using NTFS,  
-        /// the position of a file  within the parent directory is not fixed and can be  changed at any time.  
-        /// windows_2000, windows_xp, windows_server_2003,  windows_vista, and windows_server_2008 set this value  to  
-        /// 0 for files on NTFS file systems. 
-        /// </summary>
-        public uint FileIndex;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the time when  the file was created. All dates and times are in  
-        /// absolute  system-time format, which is represented as a FILETIME  structure. The value of this field MUST  
-        /// be greater  than or equal to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME CreationTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  the file was accessed in the format of a FILETIME  
-        /// structure.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME LastAccessTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  information was written to the file in the format of  
-        ///  a FILETIME structure. The value of this field MUST  be greater than or equal to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME LastWriteTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  the file was changed in the format of a FILETIME  
-        /// structure.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME ChangeTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the absolute new  end-of-file position as a byte offset from the  
-        /// start  of the file. EndOfFile specifies the offset to the  byte immediately following the last valid byte  
-        /// in the  file. Because this value is zero-based, it actually  refers to the first free byte in the file.  
-        /// That is,  it is the offset from the beginning of the file at  which new bytes appended to the file will be 
-        ///  written.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "9223372036854775807")]
-        public long EndOfFile;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the file allocation  size in bytes. Usually, this value is a  
-        /// multiple of  the sector or cluster size of the underlying physical  device. The value of this field MUST  
-        /// be greater than  or equal to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "9223372036854775807")]
-        public long AllocationSize;
-
-        /// <summary>
-        /// A 32-bit unsigned integer that contains the file attributes.  Valid attributes are as specified in section 
-        ///  . 
-        /// </summary>
-        public uint FileAttributes;
+        public FileCommonDirectoryInformation FileCommonDirectoryInformation;
 
         /// <summary>
         /// A 32-bit unsigned integer that contains the length,  in bytes, of the FileName field. 
@@ -5103,8 +5510,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         /// <summary>
         /// A NULL-terminated 12-character Unicode string containing  the short file name (8.3 name). 
         /// </summary>
-        [StaticSize(12, StaticSizeMode.Elements)]
-        public ushort[] ShortName;
+        [StaticSize(24, StaticSizeMode.Elements)]
+        public byte[] ShortName;
 
         /// <summary>
         /// MUST be ignored by the receiver. 
@@ -5116,8 +5523,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         ///  the  file system. For file systems which do not support  FileId, this field MUST be set to 0, and MUST be 
         ///  ignored. 
         /// </summary>
-        [StaticSize(8, StaticSizeMode.Elements)]
-        public byte[] FileId;
+        public long FileId;
 
         /// <summary>
         /// A sequence of Unicode characters containing the file  name. This field might not be NULL-terminated, and   
@@ -5142,77 +5548,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
     //  </remarks>
     public partial struct FileIdFullDirectoryInformation
     {
-
         /// <summary>
-        /// A 32-bit unsigned integer that contains the byte offset  from the beginning of this entry, at which the  
-        /// next  FILE_ID_FULL_DIR_INFORMATION entry is located, if multiple  entries are present in a buffer. This  
-        /// member MUST be  zero if no other entries follow this one. An implementation  MUST use this value to  
-        /// determine the location of the  next entry (if multiple entries are present in a buffer),  and MUST NOT  
-        /// assume that the value of NextEntryOffset  is the same as the size of the current entry. 
+        /// The common structure shared by FileDirectoryInformation, FileBothDirectoryInformation, FileFullDirectoryInformation, 
+        /// FileIdBothDirectoryInformation, FileIdFullDirectoryInformation, FileIdGlobalTxDirectoryInformation
         /// </summary>
-        public uint NextEntryOffset;
-
-        /// <summary>
-        /// A 32-bit unsigned integer that contains the byte offset  of the file within the parent directory. For file 
-        ///  systems  in which the position of a file within the parent directory  is not fixed and can be changed at  
-        /// any time to maintain  sort order, this field SHOULD be set to 0 and MUST  be ignored. When using NTFS, the 
-        ///  position of a file  within the parent directory is not fixed and can be  changed at any time.  
-        /// windows_2000, windows_xp, windows_server_2003,  windows_vista, and windows_server_2008 set this value  to  
-        /// 0 for files on NTFS file systems. 
-        /// </summary>
-        public uint FileIndex;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the time when  the file was created in the format of a FILETIME  
-        /// structure.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME CreationTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  the file was accessed in the format of a FILETIME  
-        /// structure.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME LastAccessTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  information was written to the file in the format of  
-        ///  a FILETIME structure. The value of this field MUST  be greater than or equal to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME LastWriteTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  the file was changed in the format of a FILETIME  
-        /// structure.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "")]
-        public FILETIME ChangeTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the absolute new  end-of-file position as a byte offset from the  
-        /// start  of the file. EndOfFile specifies the offset to the  byte immediately following the last valid byte  
-        /// in the  file. Because this value is zero-based, it actually  refers to the first free byte in the file.  
-        /// That is,  it is the offset from the beginning of the file at  which new bytes appended to the file will be 
-        ///  written.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "9223372036854775807")]
-        public long EndOfFile;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the file allocation  size in bytes. Usually, this value is a  
-        /// multiple of  the sector or cluster size of the underlying physical  device. The value of this field MUST  
-        /// be greater than  or equal to 0. 
-        /// </summary>
-        [PossibleValueRange("0", "9223372036854775807")]
-        public long AllocationSize;
-
-        /// <summary>
-        /// A 32-bit unsigned integer that contains the file attributes.  Valid attributes are as specified in section 
-        ///  . 
-        /// </summary>
-        public uint FileAttributes;
+        public FileCommonDirectoryInformation FileCommonDirectoryInformation;
 
         /// <summary>
         /// A 32-bit unsigned integer that contains the length,  in bytes, of the FileName field. 
@@ -5235,7 +5575,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         /// file system.  For file systems which do not support FileId, this  field MUST be set to 0, and MUST be  
         /// ignored. 
         /// </summary>
-        public _LARGE_INTEGER FileId;
+        public long FileId;
 
         /// <summary>
         /// A sequence of Unicode characters containing the file  name. This field might not be NULL-terminated, and   
@@ -5263,68 +5603,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
     //  </remarks>
     public partial struct FileIdGlobalTxDirectoryInformation
     {
-
         /// <summary>
-        /// A 32-bit unsigned integer that contains the byte offset  from the beginning of this entry, at which the  
-        /// next  FILE_ID_FULL_DIR_INFORMATION entry is located, if multiple  entries are present in a buffer. This  
-        /// member MUST be  zero if no other entries follow this one. An implementation  MUST use this value to  
-        /// determine the location of the  next entry (if multiple entries are present in a buffer)  and MUST NOT  
-        /// assume that the value of NextEntryOffset  is the same as the size of the current entry. 
+        /// The common structure shared by FileDirectoryInformation, FileBothDirectoryInformation, FileFullDirectoryInformation, 
+        /// FileIdBothDirectoryInformation, FileIdFullDirectoryInformation, FileIdGlobalTxDirectoryInformation
         /// </summary>
-        public uint NextEntryOffset;
-
-        /// <summary>
-        /// A 32-bit unsigned integer that contains the byte offset  of the file within the parent directory. For file 
-        ///  systems  in which the position of a file within the parent directory  is not fixed and can be changed at  
-        /// any time to maintain  sort order, this field SHOULD be set to 0 and MUST  be ignored. 
-        /// </summary>
-        public uint FileIndex;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the time when  the file was created in the format of a FILETIME  
-        /// structure.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        public FILETIME CreationTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  the file was accessed in the format of a FILETIME  
-        /// structure.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        public FILETIME LastAccessTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  information was written to the file in the format of  
-        ///  a FILETIME structure. The value of this field MUST  be greater than or equal to 0. 
-        /// </summary>
-        public FILETIME LastWriteTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the last time  the file was changed in the format of a FILETIME  
-        /// structure.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        public FILETIME ChangeTime;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the absolute new  end-of-file position as a byte offset from the  
-        /// start  of the file. EndOfFile specifies the offset to the  byte immediately following the last valid byte  
-        /// in the  file. Because this value is zero-based, it actually  refers to the first free byte in the file.  
-        /// That is,  it is the offset from the beginning of the file at  which new bytes appended to the file will be 
-        ///  written.  The value of this field MUST be greater than or equal  to 0. 
-        /// </summary>
-        public long EndOfFile;
-
-        /// <summary>
-        /// A 64-bit signed integer that contains the file allocation  size in bytes. Usually, this value is a  
-        /// multiple of  the sector or cluster size of the underlying physical  device. The value of this field MUST  
-        /// be greater than  or equal to 0. 
-        /// </summary>
-        public long AllocationSize;
-
-        /// <summary>
-        /// A 32-bit unsigned integer that contains the file attributes.  Valid attributes are as specified in section 
-        ///  . 
-        /// </summary>
-        public uint FileAttributes;
+        public FileCommonDirectoryInformation FileCommonDirectoryInformation;
 
         /// <summary>
         /// A 32-bit unsigned integer that contains the length,  in bytes, of the FileName field. 
@@ -6458,6 +6741,25 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         ///  that has not been zeroed  or left uninitialized. 
         /// </summary>
         public long ValidDataLength;
+    }
+
+    #endregion
+
+    #region 2.4.41   FileIdInformation
+    /// <summary>
+    /// This information class is used to query the volume serial number and fileid information for a file.
+    /// </summary>
+    public partial struct FileIdInformation
+    {
+        /// <summary>
+        /// A 64-bit unsigned integer that contains the serial number of the volume where the file is located.
+        /// </summary>
+        public long VolumeSerialNumber;
+
+        /// <summary>
+        /// An opaque 128-bit signed integer that is an identifier of the file.
+        /// </summary>
+        public Guid FileId;
     }
 
     #endregion
@@ -8172,19 +8474,19 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         /// <summary>
         /// Specifies the NULL SID authority. It defines only the  NULL well-known-SID: S-1-0-0. 
         /// </summary>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]            
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]
         public static readonly byte[] NULL_SID_AUTHORITY = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
         /// <summary>
         /// Specifies the World SID authority. It only defines the  Everyone well-known-SID: S-1-1-0. 
         /// </summary>        
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]                    
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]
         public static readonly byte[] WORLD_SID_AUTHORITY = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 };
 
         /// <summary>
         /// Specifies the Local SID authority. It defines only the  Local well-known-SID: S-1-2-0. 
         /// </summary>        
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]                    
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]
         public static readonly byte[] LOCAL_SID_AUTHORITY = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x02 };
 
         /// <summary>
@@ -8192,25 +8494,25 @@ namespace Microsoft.Protocols.TestTools.StackSdk.FileAccessService.Fscc
         /// Server  well-known-SIDs: S-1-3-0, S-1-3-1, and S-1-3-2. These  SIDs are used as placeholders in an access  
         /// control  list (ACL) and are replaced by the user, group, and  machine SIDs of the security principal. 
         /// </summary>        
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]                    
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]
         public static readonly byte[] CREATOR_SID_AUTHORITY = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x03 };
 
         /// <summary>
         /// Not used. 
         /// </summary>        
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]                    
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]
         public static readonly byte[] NON_UNIQUE_AUTHORITY = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x04 };
 
         /// <summary>
         /// Specifies the windows_nt security subsystem SID authority.  It defines all other SIDs in the forest. 
         /// </summary>        
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]                    
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]
         public static readonly byte[] NT_AUTHORITY = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x05 };
 
         /// <summary>
         /// Specifies the Mandatory label authority. It defines  the integrity level SIDs. 
         /// </summary>        
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]            
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2105:ArrayFieldsShouldNotBeReadOnly")]
         public static readonly byte[] SECURITY_MANDATORY_LABEL_AUTHORITY = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x10 };
     }
     #endregion

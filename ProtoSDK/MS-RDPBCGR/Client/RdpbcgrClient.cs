@@ -13,6 +13,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
+using System.Security.Authentication;
 
 using Microsoft.Protocols.TestTools.StackSdk;
 using Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr.Mcs;
@@ -43,6 +44,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         private StreamConfig transportConfig;
         private bool isAutoReactivate;
         protected const ushort TS_UD_CS_SEC_SecurityDataSize = 12;
+        private const int SOCKET_RECEIVE_TIMEOUT = 1;
+        private SslProtocols tlsVersion;
 
         /// <summary>
         /// A TCP transport instance, sending and receiving all the PDUs.
@@ -73,12 +76,17 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <summary>
         /// A context contains all major PDUs information.
         /// </summary>
-        private RdpbcgrClientContext context;
+        public RdpbcgrClientContext context;
 
         /// <summary>
         /// This member indicates UpdateSessionKey has completed.
         /// </summary>
         private ManualResetEvent updateSessionKeyEvent;
+
+        /// <summary>
+        /// Indicating whether client disconnects with SUT or not.
+        /// </summary>
+        private bool disconnected;
 
         /// <summary>
         /// A context contains all needed information.
@@ -137,6 +145,18 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             set
             {
                 isAutoReactivate = value;
+            }
+        }
+
+        public SslProtocols TlsVersion
+        {
+            get
+            {
+                return tlsVersion;
+            }
+            set
+            {
+                tlsVersion = value;
             }
         }
 
@@ -213,7 +233,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// User can add, remove or update the capability sets with the return value.
         /// </summary>
         /// <returns>The capability sets created.</returns>
-        public Collection<ITsCapsSet> CreateCapabilitySets()
+        public Collection<ITsCapsSet> CreateCapabilitySets(
+            bool supportAutoReconnect = true,
+            bool supportFastPathInput = false,
+            bool supportFastPathOutput = false,
+            bool supportSVCCompression = false)
         {
             Collection<ITsCapsSet> capabilitySets = new Collection<ITsCapsSet>();
 
@@ -229,8 +253,15 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             generalCapabilitySet.generalCompressionTypes = generalCompressionTypes_Values.V1;
             generalCapabilitySet.extraFlags = extraFlags_Values.NO_BITMAP_COMPRESSION_HDR
                                             | extraFlags_Values.ENC_SALTED_CHECKSUM
-                                            | extraFlags_Values.AUTORECONNECT_SUPPORTED
                                             | extraFlags_Values.LONG_CREDENTIALS_SUPPORTED;
+            if (supportAutoReconnect)
+            {
+                generalCapabilitySet.extraFlags |= extraFlags_Values.AUTORECONNECT_SUPPORTED;
+            }
+            if (supportFastPathOutput)
+            {
+                generalCapabilitySet.extraFlags |= extraFlags_Values.FASTPATH_OUTPUT_SUPPORTED;
+            }
             generalCapabilitySet.updateCapabilityFlag = updateCapabilityFlag_Values.V1;
             generalCapabilitySet.remoteUnshareFlag = remoteUnshareFlag_Values.V1;
             generalCapabilitySet.generalCompressionLevel = generalCompressionLevel_Values.V1;
@@ -308,10 +339,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             bitmapCacheCapabilitySet.BitmapCache4CellInfo.NumEntriesAndK = 0;
             bitmapCacheCapabilitySet.BitmapCache5CellInfo.NumEntriesAndK = 0;
             bitmapCacheCapabilitySet.Pad3 = ConstValue.BITMAP_CACHE_PAD3;
-            bitmapCacheCapabilitySet.lengthCapability = (ushort)(Marshal.SizeOf(bitmapCacheCapabilitySet)
-                                                      + bitmapCacheCapabilitySet.Pad3.Length
-                                                      - sizeof(int));
-
+            bitmapCacheCapabilitySet.lengthCapability = (ushort)(TypeMarshal.ToBytes(bitmapCacheCapabilitySet).Length);
             capabilitySets.Add(bitmapCacheCapabilitySet);
             #endregion Populating BitmapCache Capability Set
 
@@ -331,18 +359,22 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             inputCapabilitySet.capabilitySetType = capabilitySetType_Values.CAPSTYPE_INPUT;
             inputCapabilitySet.inputFlags = inputFlags_Values.INPUT_FLAG_UNICODE
                                           | inputFlags_Values.INPUT_FLAG_MOUSEX
-                                          | inputFlags_Values.INPUT_FLAG_SCANCODES
-                                          | inputFlags_Values.INPUT_FLAG_FASTPATH_INPUT2;
+                                          | inputFlags_Values.INPUT_FLAG_SCANCODES;
+            if (supportFastPathInput)
+            {
+                inputCapabilitySet.inputFlags |=
+                    (inputFlags_Values.INPUT_FLAG_FASTPATH_INPUT2 | inputFlags_Values.TS_INPUT_FLAG_QOE_TIMESTAMPS);
+            }
             inputCapabilitySet.pad2octetsA = 0;
             inputCapabilitySet.keyboardLayout = ConstValue.LOCALE_ENGLISH_UNITED_STATES;
             inputCapabilitySet.keyboardType = TS_INPUT_CAPABILITYSET_keyboardType_Values.V4;
             inputCapabilitySet.keyboardSubType = 0;
             inputCapabilitySet.keyboardFunctionKey = ConstValue.KEYBOARD_FUNCTION_KEY_NUMBER_DEFAULT;
             inputCapabilitySet.imeFileName = string.Empty;
-            inputCapabilitySet.lengthCapability = (ushort)(Marshal.SizeOf(inputCapabilitySet)
-                                                - sizeof(int)
-                                                + ConstValue.INPUT_CAP_IME_FLIENAME_SIZE);
-
+            inputCapabilitySet.lengthCapability = (ushort)(
+                                                    TypeMarshal.ToBytes(inputCapabilitySet).Length -
+                                                    2 * (inputCapabilitySet.imeFileName.Length + 1) + // length of (inputCapabilitySet.imeFileName + null terminator) in bytes[]
+                                                    ConstValue.INPUT_CAP_IME_FILENAME_SIZE);
             capabilitySets.Add(inputCapabilitySet);
             #endregion Populating Input Capability Set
 
@@ -408,7 +440,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             #region Populating Virtual Channel Capability Set
             TS_VIRTUALCHANNEL_CAPABILITYSET virtualCapabilitySet = new TS_VIRTUALCHANNEL_CAPABILITYSET();
             virtualCapabilitySet.capabilitySetType = capabilitySetType_Values.CAPSTYPE_VIRTUALCHANNEL;
-            virtualCapabilitySet.flags = TS_VIRTUALCHANNEL_CAPABILITYSET_flags_Values.VCCAPS_COMPR_SC;
+            if (supportSVCCompression)
+            {
+                virtualCapabilitySet.flags = TS_VIRTUALCHANNEL_CAPABILITYSET_flags_Values.VCCAPS_COMPR_SC;
+            }
+            else
+            {
+                virtualCapabilitySet.flags = TS_VIRTUALCHANNEL_CAPABILITYSET_flags_Values.VCCAPS_NO_COMPR;
+            }
             virtualCapabilitySet.lengthCapability = (ushort)Marshal.SizeOf(virtualCapabilitySet);
             virtualCapabilitySet.VCChunkSize = 0;
 
@@ -585,7 +624,14 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     ((CredSspStream)clientStream).Authenticate();
                 }
             }
-            // else it is only a simple tcp transport
+            else
+            {
+                // It is only a simple TCP transport.
+                // Set non-blocking mode.
+
+                tcpClient.Client.Blocking = false;
+                tcpClient.Client.ReceiveTimeout = SOCKET_RECEIVE_TIMEOUT;
+            }
 
             // create a transport config
             transportConfig = new StreamConfig();
@@ -617,9 +663,15 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                         new RemoteCertificateValidationCallback(ValidateServerCertificate),
                         null
                         );
-                    ((SslStream)clientStream).AuthenticateAsClient(serverName);
                     transportConfig.Stream = clientStream;
-                    transportStack.UpdateConfig(transportConfig);
+                    transportStack.UpdateConfig(transportConfig, () =>
+                    {
+                        // Restore to blocking mode.
+                        tcpClient.Client.Blocking = true;
+                        tcpClient.Client.ReceiveTimeout = 0;
+
+                        ((SslStream)clientStream).AuthenticateAsClient(serverName, null, TlsVersion, false);
+                    });
                 }
             }
             else if (encryptedProtocol == EncryptedProtocol.NegotiationCredSsp)
@@ -638,9 +690,21 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                                                      target,
                                                      logonName,
                                                      logonPassword);
-                    ((CredSspStream)clientStream).Authenticate();
                     transportConfig.Stream = clientStream;
-                    transportStack.UpdateConfig(transportConfig);
+                    transportStack.UpdateConfig(transportConfig, () =>
+                    {
+                        // Restore to blocking mode.
+                        tcpClient.Client.Blocking = true;
+                        tcpClient.Client.ReceiveTimeout = 0;
+
+                        ((CredSspStream)clientStream).Authenticate();
+
+                        if (Context.ServerSelectedProtocol == (uint)selectedProtocols_Values.PROTOCOL_HYBRID_EX)
+                        {
+                            // Expect Early User Authorization Result PDU from SUT.
+                            Context.IsExpectingEarlyUserAuthorizationResultPDU = true;
+                        }
+                    });
                 }
             }
             // else do nothing
@@ -1200,6 +1264,8 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
 
             context.LocalIdentity = tcpClient.Client.LocalEndPoint;
             context.RemoteIdentity = tcpClient.Client.RemoteEndPoint;
+
+            disconnected = false;
         }
 
 
@@ -1335,7 +1401,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             int coreDataSize = 0;
             clientCoreData.header.type = TS_UD_HEADER_type_Values.CS_CORE;
             coreDataSize += Marshal.SizeOf(clientCoreData.header);
-            clientCoreData.version = version_Values.V2;
+            clientCoreData.version = TS_UD_CS_CORE_version_Values.V2;
             coreDataSize += sizeof(uint);
             clientCoreData.desktopWidth = ConstValue.DESKTOP_WIDTH_DEFAULT;
             coreDataSize += Marshal.SizeOf(clientCoreData.desktopWidth);
@@ -1883,8 +1949,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                     HMACMD5 hmac = new HMACMD5(context.ArcRandomBits);
 
                     byte[] clientRandom = null;
-                    if ((context.RequestedProtocol & requestedProtocols_Values.PROTOCOL_SSL_FLAG)
-                        == requestedProtocols_Values.PROTOCOL_SSL_FLAG)
+                    if (context.RequestedProtocol != requestedProtocols_Values.PROTOCOL_RDP_FLAG)
                     {
                         clientRandom = new byte[ConstValue.RECONNECT_CLIENT_RANDOM_LENGTH];
                     }
@@ -2021,7 +2086,7 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                                      | TS_SECURITY_HEADER_flags_Values.SEC_RESET_SEQNO);
 
             TS_SYNCHRONIZE_PDU synchronizePduData = new TS_SYNCHRONIZE_PDU();
-            synchronizePduData.messageType = messageType_Values.V1;
+            synchronizePduData.messageType = TS_SYNCHRONIZE_PDU_messageType_Values.SYNCMSGTYPE_SYNC ;
             synchronizePduData.targetUser = (ushort)context.ServerChannelId;
             RdpbcgrUtility.FillShareDataHeader(ref synchronizePduData.shareDataHeader,
                 (ushort)(Marshal.SizeOf(synchronizePduData) - Marshal.SizeOf(synchronizePduData.shareDataHeader)),
@@ -2422,9 +2487,9 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         }
 
         /// <summary>
-        /// Create Fast Path Input Event PDU. This PDU includes 5 event, 
-        /// FASTPATH_INPUT_EVENT_SCANCODE, FASTPATH_INPUT_EVENT_MOUSE, FASTPATH_INPUT_EVENT_MOUSEX,
-        /// FASTPATH_INPUT_EVENT_SYNC and FASTPATH_INPUT_EVENT_UNICODE for each.
+        /// Create Fast Path Input Event PDU. This PDU includes 6 event, 
+        /// TS_FP_KEYBOARD_EVENT, TS_FP_UNICODE_KEYBOARD_EVENT, TS_FP_POINTER_EVENT,
+        /// TS_FP_POINTERX_EVENT, TS_FP_SYNC_EVENT and TS_FP_QOETIMESTAMP_EVENT for each.
         /// 
         /// The default fields value of the PDU is determined by previous messages.
         /// User can set special value in the PDU other than the default after calling this method.
@@ -2443,27 +2508,17 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             fastpathInputPdu.fpInputEvents = new Collection<TS_FP_INPUT_EVENT>();
             TS_FP_INPUT_EVENT fpInputEvent = new TS_FP_INPUT_EVENT();
 
-            // actionCode (2 bits): A lower 2-bit code indicating whether the PDU is 
-            // in fast-path or slow-path format.
-            // numberEvents (4 bits): Collapses the number of fast-path input events 
-            // packed together in the fpInputEvents field into 4 bits if the number of 
-            // events is in the range 1 to 15.
-            fastpathInputPdu.fpInputHeader.actionCode =
-                (byte)(((int)actionCode_Values.FASTPATH_INPUT_ACTION_FASTPATH & 0x03)
-                | ((int)(ConstValue.NUMBER_EVENTS & 0x0F) << 2));
+            fastpathInputPdu.fpInputHeader = new nested_TS_FP_INPUT_PDU_fpInputHeader(actionCode_Values.FASTPATH_INPUT_ACTION_FASTPATH, ConstValue.FP_NUMBER_EVENTS, encryptionFlags_Values.None);
 
             if (context.RdpEncryptionLevel != EncryptionLevel.ENCRYPTION_LEVEL_NONE)
             {
-                // encryptionFlags (2 bits): A higher 2-bit field containing the flags 
-                // that describe the cryptographic parameters of the PDU.
-                fastpathInputPdu.fpInputHeader.actionCode |=
-                    (byte)((int)encryptionFlags_Values.FASTPATH_INPUT_ENCRYPTED << 6);
+                fastpathInputPdu.fpInputHeader.flags |= encryptionFlags_Values.FASTPATH_INPUT_ENCRYPTED;
             }
 
             fastpathInputPdu.dataSignature = null;
             fastpathInputPdu.length1 = 0;
             fastpathInputPdu.length2 = 0;
-            fastpathInputPdu.numberEvents = ConstValue.NUMBER_EVENTS;
+            fastpathInputPdu.numberEvents = ConstValue.FP_NUMBER_EVENTS;
 
             if (context.RdpEncryptionLevel == EncryptionLevel.ENCRYPTION_LEVEL_FIPS)
             {
@@ -2514,6 +2569,13 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 (byte)((int)eventCode_Values.FASTPATH_INPUT_EVENT_MOUSEX << 5);
             fpInputEvent.eventData = extendedMouseEvent;
             fastpathInputPdu.fpInputEvents.Add(fpInputEvent);
+
+            TS_FP_QOETIMESTAMP_EVENT qoeTimestampEvent = new TS_FP_QOETIMESTAMP_EVENT();
+            qoeTimestampEvent.timestamp = (uint)DateTime.Now.Millisecond;
+            fpInputEvent.eventHeader.eventFlagsAndCode =
+                (byte)((int)eventCode_Values.FASTPATH_INPUT_EVENT_QOE_TIMESTAMP << 5);
+            fpInputEvent.eventData = qoeTimestampEvent;
+            fastpathInputPdu.fpInputEvents.Add(fpInputEvent);
             #endregion Fill in TS_FP_INPUT_EVENT
 
             return fastpathInputPdu;
@@ -2538,21 +2600,11 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
                 eventNum = (byte)inputEvents.Length;
             }
 
-            // actionCode (2 bits): A lower 2-bit code indicating whether the PDU is 
-            // in fast-path or slow-path format.
-            // numberEvents (4 bits): Collapses the number of fast-path input events 
-            // packed together in the fpInputEvents field into 4 bits if the number of 
-            // events is in the range 1 to 15.
-            fastpathInputPdu.fpInputHeader.actionCode =
-                (byte)(((int)actionCode_Values.FASTPATH_INPUT_ACTION_FASTPATH & 0x03)
-                | ((int)(eventNum & 0x0F) << 2));
+            fastpathInputPdu.fpInputHeader = new nested_TS_FP_INPUT_PDU_fpInputHeader(actionCode_Values.FASTPATH_INPUT_ACTION_FASTPATH, eventNum, encryptionFlags_Values.None);
 
             if (context.RdpEncryptionLevel != EncryptionLevel.ENCRYPTION_LEVEL_NONE)
             {
-                // encryptionFlags (2 bits): A higher 2-bit field containing the flags 
-                // that describe the cryptographic parameters of the PDU.
-                fastpathInputPdu.fpInputHeader.actionCode |=
-                    (byte)((int)encryptionFlags_Values.FASTPATH_INPUT_ENCRYPTED << 6);
+                fastpathInputPdu.fpInputHeader.flags |= encryptionFlags_Values.FASTPATH_INPUT_ENCRYPTED;
             }
 
             fastpathInputPdu.dataSignature = null;
@@ -2870,6 +2922,87 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             CheckEncryptionCount();
         }
 
+        private StackPacket ExpectPdu(TimeSpan timeout, Func<StackPacket, bool> filter)
+        {
+            if (timeout.TotalMilliseconds < 0)
+            {
+                return null;
+            }
+
+            // Return the packet in the buffer, which is unprocessed packet.
+            StackPacket packet = this.context.GetPacketFromBuffer(filter);
+
+            if (packet != null)
+            {
+                return packet;
+            }
+
+            if (disconnected)
+            {
+                // No more packet would be available since disconnected.
+                return null;
+            }
+
+            TransportEvent eventPacket = null;
+
+            TimeSpan leftTime = timeout;
+            DateTime endTime = DateTime.Now + timeout;
+
+            while (leftTime.TotalMilliseconds > 0)
+            {
+                eventPacket = transportStack.ExpectTransportEvent(leftTime);
+                packet = (StackPacket)eventPacket.EventObject;
+
+                if (eventPacket.EventType == EventType.Disconnected)
+                {
+                    disconnected = true;
+                    break;
+                }
+                else if (eventPacket.EventType == EventType.Exception)
+                {
+                    packet = new ErrorPdu(eventPacket.EventObject as Exception);
+                }
+
+                if (packet is ErrorPdu)
+                {
+                    // Receive thread has ended due to an exception of error PDU.
+                    disconnected = true;
+                }
+
+                if (packet is Server_X_224_Connection_Confirm_Pdu)
+                {
+                    // Negotiation-based security-enhanced Connection
+                    UpdateTransport();
+                }
+
+                if (isAutoReactivate && (packet is Server_Deactivate_All_Pdu))
+                {
+                    Reactivate(timeout);
+                }
+
+                if (filter(packet))
+                {
+                    // Return the packet if it is requested.
+                    return packet;
+                }
+                else
+                {
+                    // Add the packet to buffer if it is not requested.
+                    context.AddPacketToBuffer(packet);
+                }
+
+                if (disconnected)
+                {
+                    // No more packets from receive thread.
+                    break;
+                }
+
+                leftTime = endTime - DateTime.Now;
+            }
+
+            return null;
+        }
+
 
         /// <summary>
         /// Expect to receive a PDU of any type except virtual channel PDU from the remote host.
@@ -2880,38 +3013,9 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <exception>TimeoutException.</exception>
         public StackPacket ExpectPdu(TimeSpan timeout)
         {
-            if (timeout.TotalMilliseconds < 0)
-            {
-                return null;
-            }
+            var result = ExpectPdu(timeout, packet => true);
 
-            // Return the packet is the buffer contains unprocessed packet
-            StackPacket packet = this.context.GetPacketFromBuffer();
-            if (packet != null)
-            {
-                return packet;
-            }
-
-            TransportEvent eventPacket = null;
-
-            TimeSpan leftTime = timeout;
-            DateTime endTime = DateTime.Now + timeout;
-            while (leftTime.TotalMilliseconds > 0)
-            {
-                eventPacket = transportStack.ExpectTransportEvent(leftTime);
-                packet = (StackPacket)eventPacket.EventObject;
-                if (isAutoReactivate && (packet is Server_Deactivate_All_Pdu))
-                {
-                    Reactivate(timeout);
-                }
-                else
-                {
-                    return packet;
-                }
-                leftTime = endTime - DateTime.Now;
-            }
-
-            return null;
+            return result;
         }
 
         /// <summary>
@@ -2922,46 +3026,18 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
         /// <exception>TimeoutException.</exception>
         public StackPacket ExpectChannelPdu(TimeSpan timeout)
         {
-            if (timeout.TotalMilliseconds < 0)
+            var result = ExpectPdu(timeout, packet =>
             {
-                return null;
-            }
-
-            StackPacket packet = this.context.GetPacketFromBuffer(true);
-            if (packet != null)
-            {
-                return packet;
-            }
-
-            TimeSpan leftTime = timeout;
-            DateTime endtime = DateTime.Now - timeout;
-
-            while (leftTime.TotalMilliseconds > 0)
-            {
-                TransportEvent eventPacket = transportStack.ExpectTransportEvent(leftTime);
-                packet = (StackPacket)eventPacket.EventObject;
-                if (isAutoReactivate && (packet is Server_Deactivate_All_Pdu))
+                if (packet is MCS_Disconnect_Provider_Ultimatum_Pdu
+                         || packet is ErrorPdu
+                         || packet is Virtual_Channel_RAW_Server_Pdu)                       // some error occurs
                 {
-                    Reactivate(timeout);
+                    return true;
                 }
-                else
-                {
-                    if (packet is MCS_Disconnect_Provider_Ultimatum_Pdu
-                     || packet is ErrorPdu
-                     || packet is Virtual_Channel_RAW_Server_Pdu)                       // some error occurs
-                    {
-                        return packet;
-                    }
-                    else
-                    {
-                        this.context.AddPacketToBuffer(packet);
-                    }
-                }
-                // The remain time to expect
-                leftTime = endtime - DateTime.Now;
-            }
+                return false;
+            });
 
-            return packet;
+            return result;
         }
 
         /// <summary>
@@ -3079,6 +3155,16 @@ namespace Microsoft.Protocols.TestTools.StackSdk.RemoteDesktop.Rdpbcgr
             return packet;
         }
 
+        /// <summary>
+        /// Expect disconnection event from SUT.
+        /// </summary>
+        /// <param name="timeout">Timeout.</param>
+        /// <exception>TimeoutException.</exception>
+
+        public void ExpectDisconnect(TimeSpan timeout)
+        {
+            transportStack.ExpectDisconnect(timeout);
+        }
         #endregion raw API
 
 
